@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice {{ sale.bill_number }} — {{ profile.firm_name }}</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--wood-800:#5a430a;--wood-100:#f5e8cc;--border:#ddd;--tm:#666;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',sans-serif;font-size:13px;color:#1a1a1a;background:#f0f0f0;}
+.page{width:210mm;min-height:297mm;background:#fff;margin:0 auto;padding:14mm 14mm 10mm;}
+@media print{body{background:#fff;}.page{box-shadow:none;margin:0;}.no-print{display:none!important;}@page{size:A4;margin:0;}}
+/* Header */
+.inv-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;padding-bottom:10px;border-bottom:2px solid var(--wood-800);}
+.firm-name{font-size:20px;font-weight:700;color:var(--wood-800);}
+.firm-sub{font-size:11px;color:var(--tm);margin-top:3px;line-height:1.6;}
+.inv-label{text-align:right;}
+.inv-label h2{font-size:22px;font-weight:700;color:var(--wood-800);letter-spacing:.05em;}
+.inv-label p{font-size:12px;color:var(--tm);margin-top:4px;}
+/* Party info */
+.parties{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:12px;padding:10px 0;border-bottom:1px solid var(--border);}
+.party-box h4{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--tm);font-weight:600;margin-bottom:5px;}
+.party-name{font-size:14px;font-weight:600;margin-bottom:3px;}
+.party-detail{font-size:11px;color:var(--tm);line-height:1.7;}
+.party-gstin{font-size:11px;font-weight:600;color:#333;margin-top:4px;}
+/* Table */
+.inv-table{width:100%;border-collapse:collapse;margin-bottom:12px;}
+.inv-table th{background:var(--wood-800);color:#fff;padding:7px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;text-align:left;font-weight:600;}
+.inv-table th.right,.inv-table td.right{text-align:right;}
+.inv-table th.center,.inv-table td.center{text-align:center;}
+.inv-table tbody tr:nth-child(even){background:#fafafa;}
+.inv-table tbody td{padding:7px 8px;border-bottom:1px solid #eee;font-size:12px;vertical-align:top;}
+.inv-table tfoot td{padding:6px 8px;font-size:12px;border-top:1px solid var(--border);}
+.inv-table tfoot tr.total-row td{font-weight:700;font-size:13px;background:var(--wood-100);}
+/* GST breakdown */
+.gst-box{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:12px;}
+.gst-table{width:100%;border-collapse:collapse;font-size:11px;}
+.gst-table th{background:#f5f5f5;padding:5px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);}
+.gst-table td{padding:5px 8px;border-bottom:1px solid #eee;}
+.gst-table td.right{text-align:right;}
+/* Amount in words */
+.amount-words{background:var(--wood-100);border:1px solid #d4c090;border-radius:5px;padding:8px 12px;font-size:11px;margin-bottom:12px;}
+.amount-words strong{color:var(--wood-800);}
+/* Footer */
+.inv-footer{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);}
+.bank-details h4{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--tm);font-weight:600;margin-bottom:6px;}
+.bank-details p{font-size:11px;line-height:1.8;color:#333;}
+.signature-box{text-align:right;}
+.signature-line{border-top:1px solid #333;margin-top:35px;padding-top:5px;font-size:11px;color:var(--tm);}
+.note-box{margin-top:10px;font-size:10px;color:var(--tm);border-top:1px solid var(--border);padding-top:6px;}
+.status-stamp{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-20deg);font-size:40px;font-weight:900;opacity:.08;letter-spacing:.1em;pointer-events:none;color:green;}
+/* Print button */
+.print-bar{position:fixed;top:0;left:0;right:0;background:#1e1a14;color:#fff;padding:10px 20px;display:flex;justify-content:space-between;align-items:center;z-index:100;gap:10px;}
+.print-bar a{color:#e8c98a;text-decoration:none;font-size:13px;}
+.btn-print{background:#c49a3c;color:#fff;border:none;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.btn-whatsapp{background:#25D366;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;text-decoration:none;display:inline-flex;align-items:center;gap:6px;}
+</style>
+</head>
+<body>
+
+{% if not print_mode %}
+<div class="print-bar no-print">
+  <div style="display:flex;align-items:center;gap:16px;">
+    <a href="{% url 'sales_list' %}">← Back to Sales</a>
+    <span style="font-size:13px;opacity:.7;">{{ sale.bill_number }} · {{ sale.customer.name }}</span>
+  </div>
+  <div style="display:flex;gap:10px;">
+    <a class="btn-whatsapp" href="https://wa.me/?text=Invoice+{{ sale.bill_number }}+for+₹{{ sale.grand_total|floatformat:0 }}+from+{{ profile.firm_name }}" target="_blank">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>
+      Share on WhatsApp
+    </a>
+    <button class="btn-print" onclick="window.print()">🖨 Print Invoice</button>
+  </div>
+</div>
+<div style="height:52px;" class="no-print"></div>
+{% endif %}
+
+<div class="page" style="position:relative;">
+  {% if sale.status == 'paid' %}<div class="status-stamp">PAID</div>{% endif %}
+
+  <!-- Header -->
+  <div class="inv-header">
+    <div>
+      <div class="firm-name">{{ profile.firm_name }}</div>
+      <div class="firm-sub">{{ profile.address|linebreaksbr }}<br>Ph: {{ profile.phone }}{% if profile.email %} | {{ profile.email }}{% endif %}<br>GSTIN: {{ profile.gstin|default:'——' }} | State Code: {{ profile.state_code }}</div>
+    </div>
+    <div class="inv-label">
+      <h2>TAX INVOICE</h2>
+      <p>Invoice No: <strong>{{ sale.bill_number }}</strong></p>
+      <p>Date: <strong>{{ sale.date }}</strong></p>
+      {% if sale.due_date %}<p>Due: <strong>{{ sale.due_date }}</strong></p>{% endif %}
+      {% if sale.po_reference %}<p>PO Ref: {{ sale.po_reference }}</p>{% endif %}
+    </div>
+  </div>
+
+  <!-- Parties -->
+  <div class="parties">
+    <div class="party-box">
+      <h4>Bill To</h4>
+      <div class="party-name">{{ sale.customer.name }}</div>
+      <div class="party-detail">{{ sale.customer.location }}<br>Ph: {{ sale.customer.phone }}</div>
+      {% if sale.customer.gst_number %}<div class="party-gstin">GSTIN: {{ sale.customer.gst_number }}</div>{% endif %}
+    </div>
+    <div class="party-box">
+      <h4>Ship To</h4>
+      <div class="party-name">{{ sale.customer.name }}</div>
+      <div class="party-detail">{{ sale.delivery_address|default:sale.customer.location|linebreaksbr }}</div>
+      {% if sale.transport %}<div style="font-size:11px;margin-top:4px;color:#555;">Transport: {{ sale.transport }}</div>{% endif %}
+    </div>
+  </div>
+
+  <!-- Items table -->
+  <table class="inv-table">
+    <thead>
+      <tr>
+        <th style="width:30px;">#</th>
+        <th>Description of Goods</th>
+        <th>HSN</th>
+        <th class="center">Thickness</th>
+        {% if sale.items.first.size %}<th class="center">Size</th>{% endif %}
+        <th class="right">Qty (sqft)</th>
+        <th class="right">Rate (₹)</th>
+        <th class="right">Amount (₹)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in sale.items.all %}
+      <tr>
+        <td class="center" style="color:#888;">{{ forloop.counter }}</td>
+        <td><strong>{{ item.product.species }} Face Veneer</strong><br><span style="font-size:11px;color:#666;">{{ item.product.cut_type }} · {{ item.product.finish }}</span></td>
+        <td style="color:#555;">{{ item.product.hsn_code|default:'4408' }}</td>
+        <td class="center">{{ item.product.thickness }}</td>
+        {% if sale.items.first.size %}<td class="center">{{ item.size|default:'—' }}</td>{% endif %}
+        <td class="right">{{ item.qty|floatformat:2 }}</td>
+        <td class="right">{{ item.rate|floatformat:2 }}</td>
+        <td class="right"><strong>{{ item.amount|floatformat:2 }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><td colspan="{% if sale.items.first.size %}7{% else %}6{% endif %}" class="right" style="color:#666;">Sub Total</td><td class="right">{{ sale.taxable_amount|floatformat:2 }}</td></tr>
+      {% if sale.is_igst %}
+      <tr><td colspan="{% if sale.items.first.size %}7{% else %}6{% endif %}" class="right" style="color:#666;">IGST @ {{ sale.gst_rate }}%</td><td class="right">{{ sale.igst|floatformat:2 }}</td></tr>
+      {% else %}
+      <tr><td colspan="{% if sale.items.first.size %}7{% else %}6{% endif %}" class="right" style="color:#666;">CGST @ {{ sale.gst_rate|floatformat:1 }}%</td><td class="right">{{ sale.cgst|floatformat:2 }}</td></tr>
+      <tr><td colspan="{% if sale.items.first.size %}7{% else %}6{% endif %}" class="right" style="color:#666;">SGST @ {{ sale.gst_rate|floatformat:1 }}%</td><td class="right">{{ sale.sgst|floatformat:2 }}</td></tr>
+      {% endif %}
+      <tr class="total-row">
+        <td colspan="{% if sale.items.first.size %}7{% else %}6{% endif %}" class="right">GRAND TOTAL</td>
+        <td class="right">₹ {{ sale.grand_total|floatformat:2 }}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <!-- Amount in words -->
+  <div class="amount-words">
+    <strong>Rupees in Words:</strong> {{ sale.amount_in_words }}
+  </div>
+
+  <!-- GST breakdown + Bank details -->
+  <div class="gst-box">
+    <div>
+      <table class="gst-table">
+        <thead><tr><th>HSN Code</th><th>Taxable Amt</th>{% if sale.is_igst %}<th class="right">IGST</th>{% else %}<th class="right">CGST</th><th class="right">SGST</th>{% endif %}<th class="right">Total Tax</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>4408</td>
+            <td class="right">{{ sale.taxable_amount|floatformat:2 }}</td>
+            {% if sale.is_igst %}
+            <td class="right">{{ sale.igst|floatformat:2 }}</td>
+            {% else %}
+            <td class="right">{{ sale.cgst|floatformat:2 }}</td>
+            <td class="right">{{ sale.sgst|floatformat:2 }}</td>
+            {% endif %}
+            <td class="right"><strong>{{ sale.gst_amount|floatformat:2 }}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+      <!-- Payment history -->
+      {% if sale.payments.all %}
+      <div style="margin-top:10px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--tm);margin-bottom:4px;">Payment History</div>
+        {% for p in sale.payments.all %}
+        <div style="font-size:11px;display:flex;justify-content:space-between;padding:2px 0;"><span style="color:#555;">{{ p.date }} · {{ p.get_mode_display }}{% if p.reference %} #{{ p.reference }}{% endif %}</span><span style="font-weight:600;color:green;">₹{{ p.amount|floatformat:0 }}</span></div>
+        {% endfor %}
+        <div style="font-size:11px;font-weight:700;display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid #ddd;margin-top:4px;"><span>Balance Due</span><span style="color:{% if sale.balance > 0 %}#b33a36{% else %}green{% endif %};">₹{{ sale.balance|floatformat:0 }}</span></div>
+      </div>
+      {% endif %}
+    </div>
+    <div class="bank-details">
+      <h4>Bank Details</h4>
+      <p>
+        {% if profile.bank_name %}{{ profile.bank_name }}<br>{% endif %}
+        {% if profile.account_no %}A/C: {{ profile.account_no }}<br>{% endif %}
+        {% if profile.ifsc %}IFSC: {{ profile.ifsc }}<br>{% endif %}
+        {% if profile.upi_id %}UPI: {{ profile.upi_id }}{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="inv-footer">
+    <div>
+      {% if profile.invoice_note %}<div class="note-box">{{ profile.invoice_note }}</div>{% endif %}
+    </div>
+    <div class="signature-box">
+      <div class="signature-line">For {{ profile.firm_name }}<br>Authorised Signatory</div>
+    </div>
+  </div>
+
+</div>
+
+{% if print_mode %}
+<script>window.onload=function(){window.print();}</script>
+{% endif %}
+</body>
+</html>

@@ -1,0 +1,79 @@
+{% extends "godown/base.html" %}
+{% block title %}{{ po.po_number }}{% endblock %}
+{% block page_title %}{{ po.po_number }}{% endblock %}
+{% block content %}
+<div class="fp-header"><a class="fp-back" href="{% url 'po_list' %}"><i class="bi bi-arrow-left"></i></a><span class="fp-title">{{ po.po_number }} — {{ po.supplier.name }}</span></div>
+
+<!-- Status bar -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;">
+    <div style="display:flex;gap:24px;flex-wrap:wrap;">
+      <div><div style="font-size:11px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">PO Date</div><div style="font-weight:500;">{{ po.date }}</div></div>
+      <div><div style="font-size:11px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Expected Arrival</div>
+        <div style="font-weight:500;{% if po.is_overdue %}color:#b33a36;{% elif po.days_to_arrival is not None and po.days_to_arrival <= 3 %}color:#a06a10;{% endif %}">
+          {{ po.expected_arrival|default:'Not set' }}
+          {% if po.days_to_arrival is not None %}<span style="font-size:11px;color:var(--tm);"> · {% if po.days_to_arrival < 0 %}{{ po.days_to_arrival|cut:"-" }}d overdue{% elif po.days_to_arrival == 0 %}arriving today{% else %}{{ po.days_to_arrival }} days{% endif %}</span>{% endif %}
+        </div>
+      </div>
+      <div><div style="font-size:11px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">PO Value</div><div style="font-weight:600;font-size:16px;">₹{{ po.total_value|floatformat:0 }}</div></div>
+      <div><div style="font-size:11px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Advance Paid</div><div style="font-weight:600;color:#2d6a27;">{% if po.currency == "USD" %}${{ po.advance_paid|floatformat:2 }} USD <span style="font-size:11px;color:var(--tm);">@ ₹{{ po.advance_exchange_rate }} = ₹{{ po.advance_paid_inr|floatformat:0 }}</span>{% else %}₹{{ po.advance_paid|floatformat:0 }}{% endif %}</div></div>
+      <div><div style="font-size:11px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Balance on Arrival</div><div style="font-weight:600;color:#b33a36;">₹{{ po.balance_on_arrival|floatformat:0 }}</div></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <span class="bv {% if po.status == 'received' %}bg{% elif po.status == 'cancelled' %}br{% elif po.status == 'partial' %}ba{% else %}bb{% endif %}" style="padding:6px 14px;font-size:12px;">{{ po.get_status_display }}</span>
+      {% if po.status not in 'received,cancelled' %}
+      <a class="bw" href="{% url 'po_advance' po.pk %}"><i class="bi bi-cash-coin"></i> Add Advance</a>
+      <a class="bw" href="{% url 'add_stock_in' %}?po={{ po.pk }}" style="background:var(--wood-600);"><i class="bi bi-box-arrow-in-down"></i> Receive Goods (GRN)</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="two-col">
+  <!-- Items -->
+  <div class="cv">
+    <div class="ch"><h6>Items Ordered</h6></div>
+    <table class="tv">
+      <thead><tr><th>Product</th><th>Qty (sqft)</th><th>Rate</th><th>Amount</th></tr></thead>
+      <tbody>{% for item in po.po_items.all %}
+      <tr><td>{{ item.product }}</td><td>{{ item.qty_display }}</td><td>₹{{ item.rate }}/sqft</td><td style="font-weight:500;">₹{{ item.amount|floatformat:0 }}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+    <div style="text-align:right;margin-top:10px;font-size:15px;font-weight:700;">Total: ₹{{ po.total_value|floatformat:0 }}</div>
+  </div>
+  <!-- Linked GRNs -->
+  <div class="cv">
+    <div class="ch"><h6>Goods Received (GRNs)</h6></div>
+    {% for grn in po.grns.all %}
+    <div style="padding:10px;background:var(--body-bg);border-radius:8px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span style="font-weight:600;color:var(--wood-600);">{{ grn.grn_number }}</span>
+        <span style="font-size:12px;color:var(--tm);">{{ grn.date }}</span>
+      </div>
+      {% for item in grn.items.all %}<div style="font-size:12px;color:var(--ts);">{{ item.product.display_name }} — {{ item.qty|floatformat:0 }} sqft</div>{% endfor %}
+      {% if grn.landing_expenses.all %}
+      <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">
+        <div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:4px;">LANDING COSTS</div>
+        {% for e in grn.landing_expenses.all %}<div style="font-size:12px;color:var(--ts);">{{ e.get_category_display }}: ₹{{ e.amount|floatformat:0 }}</div>{% endfor %}
+      </div>{% endif %}
+      <div style="margin-top:6px;text-align:right;font-size:13px;font-weight:600;">Landed Cost: ₹{{ grn.total_amount|floatformat:0 }}</div>
+    </div>
+    {% empty %}<p style="color:var(--tm);font-size:13px;">No goods received yet.</p>{% endfor %}
+  </div>
+</div>
+
+{% if po.notes %}
+<div class="cv"><div class="ch"><h6>Notes</h6></div><p style="font-size:13px;color:var(--ts);">{{ po.notes }}</p></div>
+{% endif %}
+
+<!-- Update status form -->
+{% if po.status not in 'received,cancelled' %}
+<div class="cv">
+  <div class="ch"><h6>Update Status</h6></div>
+  <form method="post" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">{% csrf_token %}
+    <select class="fc fsel" name="status" style="width:auto;"><option value="pending" {% if po.status == 'pending' %}selected{% endif %}>Pending</option><option value="partial" {% if po.status == 'partial' %}selected{% endif %}>Partially Received</option><option value="received" {% if po.status == 'received' %}selected{% endif %}>Fully Received</option><option value="cancelled" {% if po.status == 'cancelled' %}selected{% endif %}>Cancelled</option></select>
+    <button class="bw" type="submit"><i class="bi bi-check2"></i> Update</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

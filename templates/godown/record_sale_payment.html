@@ -1,0 +1,135 @@
+{% extends "godown/base.html" %}
+{% block title %}Record Payment{% endblock %}
+{% block page_title %}Record Payment{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'customer_statement' sale.customer.pk %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">Record Payment — {{ sale.bill_number }}</span>
+</div>
+
+<!-- Bill Summary -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding:14px;background:var(--body-bg);border-radius:8px;">
+    <div>
+      <div style="font-size:14px;font-weight:600;">{{ sale.customer.name }}</div>
+      <div style="font-size:12px;color:var(--tm);">{{ sale.bill_number }} · {{ sale.date }}</div>
+    </div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;">
+      <div style="text-align:right;">
+        <div style="font-size:11px;color:var(--tm);">Grand Total</div>
+        <div style="font-weight:600;">₹{{ sale.grand_total|floatformat:0 }}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:11px;color:var(--tm);">Already Received</div>
+        <div style="font-weight:600;color:#2d6a27;">₹{{ sale.amount_received|floatformat:0 }}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:11px;color:var(--tm);">Balance Due</div>
+        <div style="font-size:20px;font-weight:700;color:{% if sale.balance > 0 %}#b33a36{% else %}#2d6a27{% endif %};">
+          ₹{{ sale.balance|floatformat:0 }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<form method="post" id="sale-payment-form">{% csrf_token %}
+<div class="cv">
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Amount (₹) *</label>
+      <input class="fc" name="amount" id="sp-amount" type="number"
+             step="0.01" min="0.01" required
+             placeholder="{{ sale.balance|floatformat:0 }}"
+             oninput="calcSalePayment()">
+    </div>
+    <div class="fhalf">
+      <label class="fl">Date *</label>
+      <input class="fc" name="date" type="date" required value="{% now 'Y-m-d' %}">
+    </div>
+  </div>
+
+  <!-- Live balance note -->
+  <div id="sp-note" style="display:none;padding:10px 14px;border-radius:8px;font-size:12px;margin-top:-6px;margin-bottom:10px;"></div>
+
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Payment Mode *</label>
+      <select class="fc fsel" name="mode">
+        <option value="cash">Cash</option>
+        <option value="bank">Bank Transfer / NEFT</option>
+        <option value="upi">UPI</option>
+        <option value="cheque">Cheque</option>
+        <option value="rtgs">RTGS</option>
+      </select>
+    </div>
+    <div class="fhalf">
+      <label class="fl">Reference / UTR / Cheque No</label>
+      <input class="fc" name="reference" placeholder="Optional">
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="ffull">
+      <label class="fl">Note</label>
+      <input class="fc" name="note" placeholder="Optional internal note">
+    </div>
+  </div>
+</div>
+
+<div class="fp-actions">
+  <a class="bs" href="{% url 'customer_statement' sale.customer.pk %}">Cancel</a>
+  <button class="bw" type="submit" id="sp-submit"><i class="bi bi-check2"></i> Record Payment</button>
+</div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const saleBalance = {{ sale.balance|floatformat:4 }};
+
+function calcSalePayment() {
+  const amt  = parseFloat(document.getElementById('sp-amount').value) || 0;
+  const note = document.getElementById('sp-note');
+
+  if (amt <= 0) { note.style.display = 'none'; return; }
+
+  note.style.display = '';
+  const remaining = saleBalance - amt;
+
+  if (amt > saleBalance + 0.01) {
+    const excess = (amt - saleBalance).toLocaleString('en-IN', {maximumFractionDigits:0});
+    note.style.background = '#fef6e4';
+    note.style.border     = '1px solid #fde8a0';
+    note.style.color      = '#a06a10';
+    note.innerHTML = `<i class="bi bi-info-circle"></i> ₹${excess} excess — will be recorded as advance credit against future bills.`;
+  } else if (Math.abs(remaining) < 1) {
+    note.style.background = '#eaf5e8';
+    note.style.border     = '1px solid #c3e6cb';
+    note.style.color      = '#2d6a27';
+    note.innerHTML = `<i class="bi bi-check-circle"></i> This will fully settle the balance for {{ sale.bill_number }}.`;
+  } else {
+    const left = Math.max(0, remaining).toLocaleString('en-IN', {maximumFractionDigits:0});
+    note.style.background = 'var(--body-bg)';
+    note.style.border     = '1px solid var(--border)';
+    note.style.color      = 'var(--tm)';
+    note.innerHTML = `₹${left} will remain outstanding after this payment.`;
+  }
+}
+
+// Confirm if overpaying
+document.getElementById('sale-payment-form').addEventListener('submit', async function(e) {
+  const amt = parseFloat(document.getElementById('sp-amount').value) || 0;
+  if (amt > saleBalance + 0.01) {
+    e.preventDefault();
+    const excess = (amt - saleBalance).toLocaleString('en-IN', {maximumFractionDigits:0});
+    const ok = await vp.confirm(
+      `You are paying ₹${excess} more than the balance due.\nThe excess will be recorded as advance credit for this customer.\n\nProceed?`,
+      'Excess Payment',
+      'warning'
+    );
+    if (ok) this.submit();
+  }
+});
+</script>
+{% endblock %}

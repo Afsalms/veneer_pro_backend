@@ -1,0 +1,30 @@
+{% extends "godown/base.html" %}
+{% block title %}{% if supplier %}Edit{% else %}Add{% endif %} Supplier{% endblock %}
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery-validation@1.19.5/dist/jquery.validate.min.js"></script>
+<script>
+$(function(){
+  $('#supplier-form').validate({
+    rules: { name: { required: true, minlength: 2 } },
+    messages: { name: { required: 'Supplier name is required', minlength: 'Minimum 2 characters' } },
+    errorClass: 'field-error', errorElement: 'div',
+    errorPlacement: function(e,el){ e.css({'color':'#b33a36','font-size':'11px','margin-top':'3px'}); e.insertAfter(el); },
+    highlight: function(el){ $(el).css('border-color','#b33a36'); },
+    unhighlight: function(el){ $(el).css('border-color',''); }
+  });
+});
+</script>
+{% endblock %}
+{% block page_title %}{% if supplier %}Edit{% else %}Add{% endif %} Supplier{% endblock %}
+{% block content %}
+<div class="fp-header"><a class="fp-back" href="{% url 'suppliers' %}"><i class="bi bi-arrow-left"></i></a><span class="fp-title">{% if supplier %}Edit Supplier{% else %}Add Supplier{% endif %}</span></div>
+<form method="post" id="supplier-form" novalidate>{% csrf_token %}
+<div class="cv">
+  <div class="frow"><div class="fhalf"><label class="fl">Supplier Name *</label><input class="fc" name="name" value="{{ supplier.name|default:'' }}" required placeholder="Company name"></div><div class="fhalf"><label class="fl">Phone</label><input class="fc" name="phone" value="{{ supplier.phone|default:'' }}" placeholder="+91 00000 00000"></div></div>
+  <div class="frow"><div class="fhalf"><label class="fl">City</label><input class="fc" name="city" value="{{ supplier.city|default:'' }}" placeholder="Mumbai"></div><div class="fhalf"><label class="fl">State</label><input class="fc" name="state" value="{{ supplier.state|default:'' }}" placeholder="Maharashtra"></div></div>
+  <div class="frow"><div class="fhalf"><label class="fl">Species Supplied</label><input class="fc" name="species_supplied" value="{{ supplier.species_supplied|default:'' }}" placeholder="Teak, Oak, Walnut…"></div><div class="fhalf"><label class="fl">GST Number</label><input class="fc" name="gst_number" value="{{ supplier.gst_number|default:'' }}" placeholder="Optional"></div></div>
+  <div class="frow"><div class="ffull"><label class="fl">Address</label><textarea class="fc" name="address" placeholder="Full address">{{ supplier.address|default:'' }}</textarea></div></div>
+</div>
+<div class="fp-actions"><a class="bs" href="{% url 'suppliers' %}">Cancel</a><button class="bw" type="submit"><i class="bi bi-check2"></i> Save Supplier</button></div>
+</form>{% endblock %}

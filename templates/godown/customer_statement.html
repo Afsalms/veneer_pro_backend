@@ -1,0 +1,117 @@
+{% extends "godown/base.html" %}
+{% block title %}Statement — {{ customer.name }}{% endblock %}
+{% block page_title %}Customer Statement{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'customers' %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">{{ customer.name }}</span>
+  <div style="display:flex;gap:8px;margin-left:auto;">
+    <a class="bs" href="?print=1" target="_blank"><i class="bi bi-printer"></i> Print</a>
+    <a class="bw" href="{% url 'add_sale' %}"><i class="bi bi-plus"></i> New Bill</a>
+  </div>
+</div>
+
+<!-- Summary cards -->
+<div class="sgrid cols-3" style="margin-bottom:16px;">
+  <div class="sc"><div><div class="sl">Total Billed</div><div class="sv">₹{{ total_billed|floatformat:0 }}</div></div><div class="si ib"><i class="bi bi-file-earmark-text"></i></div></div>
+  <div class="sc"><div><div class="sl">Total Collected</div><div class="sv" style="color:#2d6a27;">₹{{ total_paid|floatformat:0 }}</div></div><div class="si ig"><i class="bi bi-check-circle"></i></div></div>
+  <div class="sc"><div><div class="sl">Balance Outstanding</div><div class="sv" style="color:{% if total_balance > 0 %}#b33a36{% else %}#2d6a27{% endif %};">₹{{ total_balance|floatformat:0 }}</div>{% if overdue_amt > 0 %}<div class="sc-change text-danger"><i class="bi bi-exclamation-circle"></i> ₹{{ overdue_amt|floatformat:0 }} overdue</div>{% endif %}</div><div class="si ir"><i class="bi bi-wallet2"></i></div></div>
+</div>
+
+<!-- Customer info + Credit -->
+<div class="two-col" style="margin-bottom:16px;">
+  <div class="cv">
+    <div class="ch"><h6>Customer Details</h6><a class="bs" href="{% url 'edit_customer' customer.pk %}"><i class="bi bi-pencil"></i> Edit</a></div>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;">
+      <div class="d-flex justify-content-between"><span style="color:var(--tm);">Phone</span><span style="font-weight:500;">{{ customer.phone|default:'—' }}</span></div>
+      <div class="d-flex justify-content-between"><span style="color:var(--tm);">Location</span><span style="font-weight:500;">{{ customer.location|default:'—' }}</span></div>
+      <div class="d-flex justify-content-between"><span style="color:var(--tm);">State</span><span style="font-weight:500;">{{ customer.state }}</span></div>
+      <div class="d-flex justify-content-between"><span style="color:var(--tm);">GSTIN</span><span style="font-weight:500;font-family:monospace;font-size:12px;">{{ customer.gst_number|default:'—' }}</span></div>
+      <div class="d-flex justify-content-between"><span style="color:var(--tm);">Credit Limit</span><span style="font-weight:500;">₹{{ customer.credit_limit|floatformat:0 }}</span></div>
+      <div class="d-flex justify-content-between"><span style="color:var(--tm);">Credit Used</span>
+        <span style="font-weight:500;color:{% if total_balance > customer.credit_limit %}#b33a36{% else %}var(--tp){% endif %};">
+          ₹{{ total_balance|floatformat:0 }} / ₹{{ customer.credit_limit|floatformat:0 }}
+          {% if total_balance > customer.credit_limit %}<span class="bv br" style="font-size:10px;margin-left:4px;">Limit Exceeded</span>{% endif %}
+        </span>
+      </div>
+    </div>
+  </div>
+  <div class="cv">
+    <div class="ch"><h6>Record Payment</h6></div>
+    {% if total_balance > 0 %}
+    <form method="post" id="stmt-pay-form" action="/sales/0/payment/">{% csrf_token %}
+      <div class="frow"><div class="fhalf"><label class="fl">Bill No</label>
+        <select class="fc fsel" id="stmt-bill-sel" onchange="document.getElementById('stmt-pay-form').action='/sales/'+this.value+'/payment/'">
+          {% for s in sales %}{% if s.balance > 0 %}<option value="{{ s.pk }}">{{ s.bill_number }} (₹{{ s.balance|floatformat:0 }})</option>{% endif %}{% endfor %}
+        </select>
+      </div><div class="fhalf"><label class="fl">Amount (₹)</label><input class="fc" name="amount" type="number" step="0.01" placeholder="{{ total_balance|floatformat:0 }}" required></div></div>
+      <div class="frow"><div class="fhalf"><label class="fl">Mode</label><select class="fc fsel" name="mode"><option value="cash">Cash</option><option value="bank">Bank Transfer</option><option value="upi">UPI</option><option value="cheque">Cheque</option></select></div><div class="fhalf"><label class="fl">Reference / UTR</label><input class="fc" name="reference" placeholder="Optional"></div></div>
+      <div class="frow"><div class="fhalf"><label class="fl">Date</label><input class="fc" name="date" type="date" value="{% now 'Y-m-d' %}"></div></div>
+      <button class="bw" type="submit" style="width:100%;justify-content:center;"><i class="bi bi-check2"></i> Record Payment</button>
+    </form>
+    <script>document.addEventListener('DOMContentLoaded',function(){var s=document.getElementById('stmt-bill-sel');if(s&&s.value)document.getElementById('stmt-pay-form').action='/sales/'+s.value+'/payment/';});</script>
+    {% else %}
+    <div style="text-align:center;padding:30px;color:#2d6a27;"><i class="bi bi-check-circle" style="font-size:32px;display:block;margin-bottom:8px;"></i><strong>All Paid Up!</strong><br><span style="font-size:13px;color:var(--tm);">No outstanding balance.</span></div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Full ledger -->
+<div class="cv">
+  <div class="ch"><h6>Account Ledger</h6><span style="font-size:12px;color:var(--tm);">All transactions in chronological order</span></div>
+  <table class="tv dt">
+    <thead><tr><th>Date</th><th>Type</th><th>Reference</th><th class="right">Debit (₹)</th><th class="right">Credit (₹)</th><th class="right">Balance (₹)</th></tr></thead>
+    <tbody>
+    {% for row in ledger %}
+    <tr style="{% if row.type == 'payment' %}background:#f8fff8;{% elif row.balance > 0 %}{% endif %}">
+      <td style="color:var(--tm);">{{ row.date }}</td>
+      <td>
+        {% if row.type == 'invoice' %}
+        <span class="bv bb" style="font-size:10px;"><i class="bi bi-file-earmark-text"></i> Invoice</span>
+        {% else %}
+        <span class="bv bg" style="font-size:10px;"><i class="bi bi-check2"></i> Payment</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if row.type == 'invoice' %}
+        <a href="{% url 'invoice' row.sale.pk %}" style="color:var(--wood-600);font-weight:500;">{{ row.ref }}</a>
+        {% else %}
+        <span style="color:var(--tm);">{{ row.ref }}</span>
+        {% endif %}
+      </td>
+      <td class="right" style="font-weight:{% if row.debit > 0 %}600{% else %}400{% endif %};color:{% if row.debit > 0 %}#b33a36{% else %}var(--tm){% endif %};">
+        {% if row.debit > 0 %}₹{{ row.debit|floatformat:0 }}{% else %}—{% endif %}
+      </td>
+      <td class="right" style="font-weight:{% if row.credit > 0 %}600{% else %}400{% endif %};color:{% if row.credit > 0 %}#2d6a27{% else %}var(--tm){% endif %};">
+        {% if row.credit > 0 %}₹{{ row.credit|floatformat:0 }}{% else %}—{% endif %}
+      </td>
+      <td class="right" style="font-weight:600;color:{% if row.balance > 0 %}#b33a36{% else %}#2d6a27{% endif %};">
+        ₹{{ row.balance|floatformat:0 }}
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6" style="text-align:center;color:var(--tm);padding:30px;">No transactions yet.</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr style="background:var(--wood-100);font-weight:700;">
+        <td colspan="3">Closing Balance</td>
+        <td class="right">₹{{ total_billed|floatformat:0 }}</td>
+        <td class="right">₹{{ total_paid|floatformat:0 }}</td>
+        <td class="right" style="color:{% if total_balance > 0 %}#b33a36{% else %}#2d6a27{% endif %};">₹{{ total_balance|floatformat:0 }}</td>
+      </tr>
+    </tfoot>
+  </table>
+  <!-- Mobile: card list -->
+  <div class="ml">
+    {% for row in ledger %}
+    <div class="mc" style="{% if row.type == 'payment' %}border-color:#c3e6cb;{% endif %}">
+      <div class="mct"><div><div class="mcn">{% if row.type == 'invoice' %}{{ row.ref }}{% else %}Payment — {{ row.ref }}{% endif %}</div><div class="mcs">{{ row.date }}</div></div>{% if row.type == 'invoice' %}<span class="bv bb" style="font-size:10px;">Invoice</span>{% else %}<span class="bv bg" style="font-size:10px;">Payment</span>{% endif %}</div>
+      {% if row.debit > 0 %}<div class="mr"><span class="mrk">Debit</span><span class="mrv" style="color:#b33a36;">₹{{ row.debit|floatformat:0 }}</span></div>{% endif %}
+      {% if row.credit > 0 %}<div class="mr"><span class="mrk">Credit</span><span class="mrv" style="color:#2d6a27;">₹{{ row.credit|floatformat:0 }}</span></div>{% endif %}
+      <div class="mr"><span class="mrk">Balance</span><span class="mrv" style="font-weight:700;color:{% if row.balance > 0 %}#b33a36{% else %}#2d6a27{% endif %};">₹{{ row.balance|floatformat:0 }}</span></div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

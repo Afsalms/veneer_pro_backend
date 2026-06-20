@@ -1,0 +1,168 @@
+{% extends "godown/base.html" %}
+{% block title %}Record Payment{% endblock %}
+{% block page_title %}Record Payment{% endblock %}
+{% block content %}
+
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'payables' %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">Record Supplier Payment</span>
+</div>
+
+<!-- GRN Summary -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding:14px;background:var(--body-bg);border-radius:8px;">
+    <div>
+      <div style="font-size:14px;font-weight:600;">{{ grn.supplier.name }}</div>
+      <div style="font-size:12px;color:var(--tm);">{{ grn.grn_number }} · {{ grn.date }}</div>
+    </div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;">
+      <div style="text-align:right;">
+        <div style="font-size:11px;color:var(--tm);">Total</div>
+        <div style="font-weight:600;">₹{{ grn.total_amount|floatformat:0 }}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:11px;color:var(--tm);">Paid</div>
+        <div style="font-weight:600;color:#2d6a27;">₹{{ grn.amount_paid_inr|floatformat:0 }}</div>
+      </div>
+      {% if grn.po and grn.po.advance_paid > 0 %}
+      <div style="text-align:right;">
+        <div style="font-size:11px;color:var(--tm);">Advance</div>
+        <div style="font-weight:600;color:#2d6a27;">₹{{ grn.po.advance_paid_inr|floatformat:0 }}</div>
+      </div>
+      {% endif %}
+      <div style="text-align:right;">
+        <div style="font-size:11px;color:var(--tm);">Balance Due</div>
+        <div style="font-size:20px;font-weight:700;color:{% if grn.balance > 0 %}#b33a36{% else %}#2d6a27{% endif %};">
+          ₹{{ grn.balance|floatformat:0 }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<form method="post" id="payment-form">{% csrf_token %}
+<div class="cv">
+
+  <!-- Currency selection FIRST — so user sets this before entering amount -->
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Payment Currency</label>
+      <select class="fc fsel" name="payment_currency" id="rp-currency" onchange="onRPCurrency()">
+        <option value="INR">₹ Indian Rupee (INR)</option>
+        <option value="USD">$ US Dollar (USD)</option>
+      </select>
+    </div>
+    <div class="fhalf" id="rp-rate-row" style="display:none;">
+      <label class="fl">Exchange Rate (1 USD = ₹ how much?)</label>
+      <input class="fc" name="exchange_rate" id="rp-rate" type="number"
+             step="0.01" min="1" placeholder="e.g. 84.50"
+             oninput="calcPaymentINR()">
+      <div style="font-size:11px;color:var(--tm);margin-top:3px;">Today's rate — e.g. 84.50 means $1 = ₹84.50</div>
+    </div>
+  </div>
+
+  <!-- Amount -->
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl" id="amount-label">Amount Paid (₹) *</label>
+      <input class="fc" name="amount" id="rp-amount" type="number"
+             step="0.01" min="0.01" required placeholder="0"
+             oninput="calcPaymentINR()">
+    </div>
+    <div class="fhalf">
+      <label class="fl">Payment Mode</label>
+      <select class="fc fsel" name="mode">
+        <option value="bank">Bank Transfer / NEFT</option>
+        <option value="upi">UPI</option>
+        <option value="cash">Cash</option>
+        <option value="cheque">Cheque</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- INR equivalent (shown for USD payments) -->
+  <div id="inr-equiv" style="display:none;padding:10px 14px;background:var(--wood-100);border-radius:8px;font-size:13px;color:var(--wood-800);margin-top:-6px;margin-bottom:8px;"></div>
+
+  <!-- Balance note (live) -->
+  <div id="balance-note" style="padding:8px 14px;border-radius:8px;font-size:12px;margin-bottom:8px;display:none;"></div>
+
+  <div class="frow">
+    <div class="ffull">
+      <label class="fl">Transaction Reference</label>
+      <input class="fc" name="reference" placeholder="UTR / Cheque number (optional)">
+    </div>
+  </div>
+
+</div>
+<div class="fp-actions">
+  <a class="bs" href="{% url 'payables' %}">Cancel</a>
+  <button class="bw" type="submit"><i class="bi bi-check2"></i> Save Payment</button>
+</div>
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const grnBalance = {{ grn.balance|floatformat:4 }};
+
+function onRPCurrency() {
+  const cur = document.getElementById('rp-currency').value;
+  const rateRow = document.getElementById('rp-rate-row');
+  const label   = document.getElementById('amount-label');
+  if (cur === 'USD') {
+    rateRow.style.display = '';
+    label.textContent = 'Amount Paid (USD $) *';
+  } else {
+    rateRow.style.display = 'none';
+    label.textContent = 'Amount Paid (₹) *';
+    document.getElementById('inr-equiv').style.display = 'none';
+  }
+  calcPaymentINR();
+}
+
+function calcPaymentINR() {
+  const cur   = document.getElementById('rp-currency').value;
+  const amt   = parseFloat(document.getElementById('rp-amount').value) || 0;
+  const rate  = parseFloat(document.getElementById('rp-rate')?.value) || 0;
+  const equiv = document.getElementById('inr-equiv');
+  const note  = document.getElementById('balance-note');
+
+  let amtINR = amt;
+  if (cur === 'USD') {
+    if (amt > 0 && rate > 0) {
+      amtINR = amt * rate;
+      equiv.style.display = '';
+      equiv.innerHTML = `<strong>$${amt.toFixed(2)} × ₹${rate.toFixed(2)} = ₹${amtINR.toLocaleString('en-IN', {maximumFractionDigits: 0})}</strong> INR equivalent`;
+    } else {
+      equiv.style.display = 'none';
+    }
+  }
+
+  // Balance note
+  if (amt > 0) {
+    const remaining = grnBalance - amtINR;
+    note.style.display = '';
+    if (amtINR > grnBalance + 0.01) {
+      const excess = amtINR - grnBalance;
+      note.style.background = '#fef6e4';
+      note.style.border = '1px solid #fde8a0';
+      note.style.color = '#a06a10';
+      note.innerHTML = `₹${excess.toLocaleString('en-IN', {maximumFractionDigits:0})} excess — will be recorded as advance credit.`;
+    } else if (Math.abs(remaining) < 1) {
+      note.style.background = '#eaf5e8';
+      note.style.border = '1px solid #c3e6cb';
+      note.style.color = '#2d6a27';
+      note.innerHTML = `✓ This will fully settle the balance.`;
+    } else {
+      note.style.background = 'var(--body-bg)';
+      note.style.border = '1px solid var(--border)';
+      note.style.color = 'var(--tm)';
+      note.innerHTML = `₹${Math.max(0,remaining).toLocaleString('en-IN', {maximumFractionDigits:0})} will remain outstanding.`;
+    }
+  } else {
+    note.style.display = 'none';
+  }
+}
+</script>
+{% endblock %}

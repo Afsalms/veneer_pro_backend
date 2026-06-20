@@ -1,0 +1,71 @@
+{% extends "godown/base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'lookup_list' %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">{{ title }}</span>
+</div>
+<form method="post">{% csrf_token %}
+<div class="cv">
+  {% if not lv %}
+  <div class="frow">
+    <div class="ffull">
+      <label class="fl">Category *</label>
+      <select class="fc fsel" name="category" required>
+        <option value="">Select category</option>
+        {% for cat in categories %}
+        <option value="{{ cat.value }}" {% if request.GET.category == cat.value %}selected{% endif %}>{{ cat.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  {% else %}
+  <div class="frow">
+    <div class="ffull">
+      <label class="fl">Category</label>
+      <input class="fc" value="{{ lv.get_category_display }}" disabled style="opacity:.6;">
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Value (stored in DB) *{% if lv %} <span style="font-weight:400;color:var(--tm);">— cannot change</span>{% endif %}</label>
+      {% if lv %}
+        <input class="fc" value="{{ lv.value }}" disabled style="opacity:.6;font-family:monospace;">
+      {% else %}
+        <input class="fc" name="value" required placeholder="e.g. 0.6mm or Flat Cut" autocomplete="off">
+        <div style="font-size:11px;color:var(--tm);margin-top:3px;">This is what gets stored in the database. Keep it short and consistent — no spaces preferred.</div>
+      {% endif %}
+    </div>
+    <div class="fhalf">
+      <label class="fl">Label (shown in dropdowns) *</label>
+      <input class="fc" name="label" value="{{ lv.label|default:'' }}" required placeholder="e.g. 0.6mm Thin or Flat Cut">
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Sort Order</label>
+      <input class="fc" name="sort_order" type="number" min="0" value="{{ lv.sort_order|default:'0' }}" placeholder="0">
+      <div style="font-size:11px;color:var(--tm);margin-top:3px;">Lower numbers appear first in dropdowns.</div>
+    </div>
+    <div class="fhalf" style="display:flex;flex-direction:column;gap:12px;padding-top:24px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+        <input type="checkbox" name="is_default" {% if lv.is_default %}checked{% endif %} style="width:16px;height:16px;accent-color:var(--wood-600);">
+        Pre-selected as default in forms
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+        <input type="checkbox" name="is_active" {% if not lv or lv.is_active %}checked{% endif %} style="width:16px;height:16px;accent-color:var(--wood-600);">
+        Active (visible in dropdowns)
+      </label>
+    </div>
+  </div>
+</div>
+<div class="fp-actions">
+  <a class="bs" href="{% url 'lookup_list' %}">Cancel</a>
+  <button class="bw" type="submit"><i class="bi bi-check2"></i> Save</button>
+</div>
+</form>
+{% endblock %}

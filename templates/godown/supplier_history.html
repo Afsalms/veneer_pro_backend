@@ -1,0 +1,193 @@
+{% extends "godown/base.html" %}
+{% block title %}{{ supplier.name }} — History{% endblock %}
+{% block page_title %}Supplier History{% endblock %}
+{% block content %}
+
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'suppliers' %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">{{ supplier.name }}</span>
+  <div style="display:flex;gap:8px;margin-left:auto;">
+    <a class="bs" href="{% url 'edit_supplier' supplier.pk %}"><i class="bi bi-pencil"></i> Edit</a>
+    <button class="bs" onclick="window.print()" style="cursor:pointer;"><i class="bi bi-printer"></i> Print</button>
+  </div>
+</div>
+
+<!-- Supplier Meta -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;flex-wrap:wrap;gap:24px;">
+    {% if supplier.phone %}
+    <div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Phone</div>
+      <a href="tel:{{ supplier.phone }}" style="font-weight:600;color:var(--wood-600);">{{ supplier.phone }}</a></div>
+    {% endif %}
+    {% if supplier.city %}
+    <div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Location</div>
+      <div style="font-weight:500;">{{ supplier.city }}{% if supplier.state %}, {{ supplier.state }}{% endif %}</div></div>
+    {% endif %}
+    {% if supplier.gst_number %}
+    <div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">GSTIN</div>
+      <div style="font-weight:500;font-family:monospace;">{{ supplier.gst_number }}</div></div>
+    {% endif %}
+    {% if supplier.species_supplied %}
+    <div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Species</div>
+      <div style="font-weight:500;">{{ supplier.species_supplied }}</div></div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Summary Stats -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+  <div class="sc"><div><div class="sl">Total GRNs</div><div class="sv">{{ grn_count }}</div></div></div>
+  <div class="sc"><div><div class="sl">Total Purchased</div><div class="sv">₹{{ total_purchased|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">Total Paid + Advance</div><div class="sv" style="color:#2d6a27;">₹{{ total_credit|floatformat:0 }}</div></div></div>
+  <div class="sc"><div>
+    <div class="sl">Outstanding</div>
+    <div class="sv" style="color:{% if outstanding > 0 %}#b33a36{% else %}#2d6a27{% endif %};">
+      {% if outstanding < 0 %}
+        (Cr) ₹{% widthratio outstanding -1 1 %}
+      {% else %}
+        ₹{{ outstanding|floatformat:0 }}
+      {% endif %}
+    </div>
+    <div class="sc-change" style="color:var(--tm);">
+      {% if outstanding < 0 %}Advance credit on account{% elif outstanding == 0 %}Fully settled{% else %}Payable{% endif %}
+    </div>
+  </div></div>
+</div>
+
+<!-- Species Breakdown -->
+{% if species_map %}
+<div class="cv" style="margin-bottom:14px;">
+  <div class="ch"><h6>Species Purchased</h6></div>
+  <div style="display:flex;flex-wrap:wrap;gap:10px;">
+    {% for species, data in species_map.items %}
+    <div style="background:var(--body-bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;min-width:140px;">
+      <div style="font-size:13px;font-weight:600;color:var(--ts);">{{ species }}</div>
+      <div style="font-size:12px;color:var(--tm);margin-top:3px;">{{ data.qty|floatformat:0 }} sqft</div>
+      <div style="font-size:14px;font-weight:700;color:var(--wood-600);margin-top:2px;">₹{{ data.amount|floatformat:0 }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Transaction Ledger -->
+<div class="cv">
+  <div class="ch"><h6>Transaction Ledger</h6></div>
+
+  <table class="tv dt">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Type</th>
+        <th>Reference</th>
+        <th>Note</th>
+        <th style="text-align:right;">Debit (We Owe)</th>
+        <th style="text-align:right;">Credit (We Paid)</th>
+        <th style="text-align:right;">Balance</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for ev in events %}
+    <tr style="{% if ev.type == 'payment' or ev.type == 'advance' %}background:var(--body-bg);{% endif %}">
+      <td style="color:var(--tm);white-space:nowrap;">{{ ev.date }}</td>
+      <td>
+        {% if ev.type == 'grn' %}
+          <span class="bv bb" style="font-size:10px;">GRN</span>
+        {% elif ev.type == 'advance' %}
+          <span class="bv bg" style="font-size:10px;">Advance</span>
+        {% elif ev.type == 'payment' %}
+          <span class="bv bg" style="font-size:10px;">Payment</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if ev.type == 'grn' %}
+          <a href="{% url 'grn_detail' ev.obj.pk %}" style="font-weight:500;color:var(--wood-600);">{{ ev.ref }}</a>
+        {% elif ev.type == 'advance' %}
+          <a href="{% url 'po_detail' ev.obj.pk %}" style="font-weight:500;color:var(--wood-600);">{{ ev.ref }}</a>
+        {% else %}
+          <span style="color:var(--tm);">{{ ev.ref }}</span>
+        {% endif %}
+      </td>
+      <td style="font-size:12px;color:var(--tm);">
+        {{ ev.note }}
+        {% if ev.foreign_amt %}
+          <div style="font-size:11px;color:#2a5aaa;">
+            {# Show USD amount and exchange rate cleanly #}
+            ${{ ev.foreign_amt|floatformat:2 }} × ₹{{ ev.exchange_rate|floatformat:2 }} = ₹{{ ev.credit|floatformat:0 }}
+          </div>
+        {% endif %}
+      </td>
+      <td style="text-align:right;{% if ev.debit > 0 %}color:#b33a36;font-weight:500;{% else %}color:var(--tm);{% endif %}">
+        {% if ev.debit > 0 %}₹{{ ev.debit|floatformat:0 }}{% else %}—{% endif %}
+      </td>
+      <td style="text-align:right;{% if ev.credit > 0 %}color:#2d6a27;font-weight:500;{% else %}color:var(--tm);{% endif %}">
+        {% if ev.credit > 0 %}₹{{ ev.credit|floatformat:0 }}{% else %}—{% endif %}
+      </td>
+      <td style="text-align:right;font-weight:600;">
+        {# Balance: positive = we owe (red), negative = they owe us/advance credit (green) #}
+        {% if ev.balance > 0 %}
+          <span style="color:#b33a36;">₹{{ ev.balance|floatformat:0 }}</span>
+        {% elif ev.balance < 0 %}
+          {# Remove negative sign and show (Cr) prefix #}
+          <span style="color:#2d6a27;">(Cr) ₹{% widthratio ev.balance -1 1 %}</span>
+        {% else %}
+          <span style="color:#2d6a27;">₹0</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7" style="text-align:center;color:var(--tm);padding:30px;">No transactions yet.</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if events %}
+    <tfoot>
+      <tr style="background:var(--wood-100);">
+        <td colspan="4" style="padding:12px;font-weight:700;">Total</td>
+        <td style="text-align:right;padding:12px;font-weight:700;color:#b33a36;">₹{{ total_purchased|floatformat:0 }}</td>
+        <td style="text-align:right;padding:12px;font-weight:700;color:#2d6a27;">₹{{ total_credit|floatformat:0 }}</td>
+        <td style="text-align:right;padding:12px;font-weight:700;">
+          {% if outstanding > 0 %}
+            <span style="color:#b33a36;">₹{{ outstanding|floatformat:0 }}</span>
+          {% elif outstanding < 0 %}
+            <span style="color:#2d6a27;">(Cr) ₹{% widthratio outstanding -1 1 %}</span>
+          {% else %}
+            <span style="color:#2d6a27;">₹0 — Settled</span>
+          {% endif %}
+        </td>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+
+  <!-- Mobile list -->
+  <div class="ml">
+  {% for ev in events %}
+  <div class="mc">
+    <div class="mct">
+      <div>
+        <div class="mcn">
+          {% if ev.type == 'grn' %}📦 {{ ev.ref }}
+          {% elif ev.type == 'advance' %}💰 Advance — {{ ev.ref }}
+          {% else %}✅ Payment — {{ ev.ref }}{% endif %}
+        </div>
+        <div class="mcs">{{ ev.date }} · {{ ev.note }}</div>
+      </div>
+      <span style="font-size:13px;font-weight:700;color:{% if ev.balance > 0 %}#b33a36{% else %}#2d6a27{% endif %};">
+        {% if ev.balance < 0 %}(Cr) ₹{% widthratio ev.balance -1 1 %}{% else %}₹{{ ev.balance|floatformat:0 }}{% endif %}
+      </span>
+    </div>
+    {% if ev.debit > 0 %}
+    <div class="mr"><span class="mrk">Debit (we owe)</span><span class="mrv" style="color:#b33a36;">₹{{ ev.debit|floatformat:0 }}</span></div>
+    {% endif %}
+    {% if ev.credit > 0 %}
+    <div class="mr"><span class="mrk">Credit (we paid)</span><span class="mrv" style="color:#2d6a27;">₹{{ ev.credit|floatformat:0 }}</span></div>
+    {% endif %}
+    {% if ev.foreign_amt %}
+    <div class="mr"><span class="mrk">USD</span><span class="mrv" style="color:#2a5aaa;">${{ ev.foreign_amt|floatformat:2 }} @ ₹{{ ev.exchange_rate|floatformat:2 }}</span></div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  </div>
+
+</div>
+{% endblock %}

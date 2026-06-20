@@ -1,0 +1,96 @@
+{% extends "godown/base.html" %}
+{% block title %}{{ sale.bill_number }}{% endblock %}
+{% block page_title %}Sale Detail{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'sales_list' %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">{{ sale.bill_number }}</span>
+  <div style="display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;">
+    <a class="bs" href="{% url 'invoice' sale.pk %}"><i class="bi bi-printer"></i> Invoice</a>
+    {% if sale.sale_type == 'bill' %}
+    <a class="bs" href="{% url 'einvoice_json' sale.pk %}?download=1" title="Download e-Invoice JSON for GSP"><i class="bi bi-download"></i> e-Invoice JSON</a>
+    {% endif %}
+    {% if sale.balance > 0 %}<a class="bw" href="{% url 'record_sale_payment' sale.pk %}">Collect Payment</a>{% endif %}
+  </div>
+</div>
+
+<!-- Meta -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start;justify-content:space-between;">
+    <div style="display:flex;flex-wrap:wrap;gap:24px;">
+      <div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Bill No</div><div style="font-size:16px;font-weight:700;color:var(--wood-600);">{{ sale.bill_number }}</div></div>
+      <div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Customer</div><div style="font-weight:600;">{{ sale.customer.name }}</div>{% if sale.customer.phone %}<div style="font-size:12px;color:var(--tm);">{{ sale.customer.phone }}</div>{% endif %}</div>
+      <div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Date</div><div style="font-weight:500;">{{ sale.date }}</div></div>
+      {% if sale.due_date %}<div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Due Date</div><div style="font-weight:500;{% if sale.is_overdue %}color:#b33a36;{% endif %}">{{ sale.due_date }}</div></div>{% endif %}
+      {% if sale.transport %}<div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Transport</div><div style="font-weight:500;">{{ sale.transport }}</div></div>{% endif %}
+    </div>
+    <span class="bv {% if sale.status == 'paid' %}bg{% elif sale.status == 'partial' %}ba{% else %}br{% endif %}" style="font-size:13px;padding:6px 14px;">{{ sale.status|title }}</span>
+  </div>
+</div>
+
+<!-- Items -->
+<div class="cv" style="margin-bottom:14px;">
+  <div class="ch"><h6>Items Sold</h6></div>
+  <table class="tv">
+    <thead><tr><th>Product</th><th>Size</th><th>Qty (sqft)</th><th>Rate/sqft</th><th>Amount</th><th>Cost</th><th>Profit</th></tr></thead>
+    <tbody>
+    {% for item in sale.items.all %}
+    <tr>
+      <td style="font-weight:500;">{{ item.product.display_name }}</td>
+      <td style="color:var(--tm);">{{ item.size|default:"—" }}</td>
+      <td>{{ item.qty_sqft|floatformat:2 }}</td>
+      <td>₹{{ item.rate_per_sqft }}</td>
+      <td style="font-weight:600;">₹{{ item.amount|floatformat:0 }}</td>
+      <td style="color:var(--tm);font-size:12px;">₹{{ item.cost_amount|floatformat:0 }}</td>
+      <td style="color:{% if item.gross_profit >= 0 %}#2d6a27{% else %}#b33a36{% endif %};font-weight:500;">₹{{ item.gross_profit|floatformat:0 }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr style="background:var(--body-bg);">
+        <td colspan="4" style="text-align:right;padding:10px;color:var(--tm);">Taxable Amount</td>
+        <td colspan="3" style="padding:10px;font-weight:600;">₹{{ sale.total_amount|floatformat:0 }}</td>
+      </tr>
+      {% if sale.is_igst %}
+      <tr><td colspan="4" style="text-align:right;padding:6px 10px;color:var(--tm);">IGST {{ sale.gst_rate }}%</td><td colspan="3" style="padding:6px 10px;">₹{{ sale.igst|floatformat:0 }}</td></tr>
+      {% else %}
+      <tr><td colspan="4" style="text-align:right;padding:6px 10px;color:var(--tm);">CGST {{ sale.gst_rate|floatformat:0 }}%</td><td colspan="3" style="padding:6px 10px;">₹{{ sale.cgst|floatformat:0 }}</td></tr>
+      <tr><td colspan="4" style="text-align:right;padding:6px 10px;color:var(--tm);">SGST {{ sale.gst_rate|floatformat:0 }}%</td><td colspan="3" style="padding:6px 10px;">₹{{ sale.sgst|floatformat:0 }}</td></tr>
+      {% endif %}
+      <tr style="background:var(--wood-100);"><td colspan="4" style="text-align:right;padding:12px;font-weight:700;font-size:15px;">Grand Total</td><td colspan="3" style="padding:12px;font-weight:700;font-size:16px;color:var(--wood-800);">₹{{ sale.grand_total|floatformat:0 }}</td></tr>
+    </tfoot>
+  </table>
+</div>
+
+<!-- Payments -->
+<div class="cv" style="margin-bottom:14px;">
+  <div class="ch"><h6>Payment History</h6>
+    {% if sale.balance > 0 %}<a class="bw" href="{% url 'record_sale_payment' sale.pk %}" style="font-size:12px;">+ Record Payment</a>{% endif %}
+  </div>
+  {% if sale.payments.all %}
+  <table class="tv">
+    <thead><tr><th>Date</th><th>Mode</th><th>Reference</th><th>Note</th><th>Amount</th></tr></thead>
+    <tbody>
+    {% for p in sale.payments.all %}
+    <tr>
+      <td>{{ p.date }}</td>
+      <td><span class="chip">{{ p.get_mode_display }}</span></td>
+      <td style="color:var(--tm);">{{ p.reference|default:"—" }}</td>
+      <td style="color:var(--tm);">{{ p.note|default:"—" }}</td>
+      <td style="font-weight:600;color:#2d6a27;">₹{{ p.amount|floatformat:0 }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="color:var(--tm);font-size:13px;padding:12px 0;">No payments recorded yet.</div>
+  {% endif %}
+
+  <!-- Balance summary -->
+  <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:24px;padding:14px;background:var(--body-bg);border-radius:8px;">
+    <div><div style="font-size:11px;color:var(--tm);margin-bottom:2px;">Grand Total</div><div style="font-weight:600;">₹{{ sale.grand_total|floatformat:0 }}</div></div>
+    <div><div style="font-size:11px;color:var(--tm);margin-bottom:2px;">Received</div><div style="font-weight:600;color:#2d6a27;">₹{{ sale.amount_received|floatformat:0 }}</div></div>
+    <div><div style="font-size:11px;color:var(--tm);margin-bottom:2px;">Balance</div><div style="font-size:18px;font-weight:700;color:{% if sale.balance > 0 %}#b33a36{% else %}#2d6a27{% endif %};">₹{{ sale.balance|floatformat:0 }}</div></div>
+  </div>
+</div>
+{% endblock %}

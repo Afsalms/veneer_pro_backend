@@ -1,0 +1,114 @@
+{% extends "godown/base.html" %}
+{% block title %}User Management{% endblock %}
+{% block page_title %}User Management{% endblock %}
+{% block topbar_action %}<a class="bw" id="topbar-action" href="{% url 'add_user' %}"><i class="bi bi-person-plus"></i> Add User</a>{% endblock %}
+{% block fab %}<a id="fab" class="fab-show" href="{% url 'add_user' %}" style="display:flex;"><i class="bi bi-plus"></i></a>{% endblock %}
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--body-bg);border-radius:8px;margin-bottom:14px;font-size:13px;">
+  <span style="color:var(--ts);"><i class="bi bi-people"></i> <strong>{{ user_count }}/{{ max_users }}</strong> users · {{ slots_remaining }} slot{{ slots_remaining|pluralize }} remaining</span>
+  {% if at_limit %}<span style="color:#a06a10;font-size:12px;"><i class="bi bi-exclamation-triangle"></i> Limit reached — contact support to add more</span>{% endif %}
+</div>
+<div class="cv">
+  <div class="ch">
+    <h6>All Users ({{ users_data|length }})</h6>
+    <a class="bw" href="{% url 'add_user' %}"><i class="bi bi-person-plus"></i> Add User</a>
+  </div>
+
+  <!-- Desktop table -->
+  <table class="tv dt">
+    <thead><tr><th>User</th><th>Username</th><th>Email</th><th>Phone</th><th>Role</th><th>Joined</th><th></th></tr></thead>
+    <tbody>
+    {% for item in users_data %}
+    <tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="av" style="background:{% if item.profile.is_admin %}var(--wood-100){% else %}#e8f0fd{% endif %};color:{% if item.profile.is_admin %}var(--wood-800){% else %}#2a5aaa{% endif %};font-size:11px;">{{ item.user.get_full_name|default:item.user.username|slice:":2"|upper }}</div>
+          <div>
+            <div style="font-weight:500;">{{ item.user.get_full_name|default:item.user.username }}</div>
+            <div style="font-size:11px;color:var(--tm);">{% if item.user == request.user %}You{% endif %}</div>
+          </div>
+        </div>
+      </td>
+      <td style="font-family:monospace;font-size:13px;">{{ item.user.username }}</td>
+      <td style="color:var(--tm);">{{ item.user.email|default:'—' }}</td>
+      <td style="color:var(--tm);">{{ item.profile.phone|default:'—' }}</td>
+      <td>
+        <span class="bv {% if item.profile.is_admin %}ba{% else %}bb{% endif %}">
+          <i class="bi {% if item.profile.is_admin %}bi-shield-check{% else %}bi-person{% endif %}"></i>
+          {{ item.profile.get_role_display }}
+        </span>
+      </td>
+      <td style="color:var(--tm);">{{ item.user.date_joined|date:"d M Y" }}</td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <a class="bs" href="{% url 'edit_user' item.user.pk %}"><i class="bi bi-pencil"></i></a>
+          {% if item.user != request.user %}
+          <form method="post" action="{% url 'delete_user' item.user.pk %}" onsubmit="return confirm('Delete user {{ item.user.username }}?');" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="bs" style="color:#b33a36;border-color:#f5c6cb;"><i class="bi bi-trash3"></i></button>
+          </form>
+          {% endif %}
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Mobile list -->
+  <div class="ml">
+  {% for item in users_data %}
+  <div class="mc">
+    <div class="mct">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="av" style="background:{% if item.profile.is_admin %}var(--wood-100){% else %}#e8f0fd{% endif %};color:{% if item.profile.is_admin %}var(--wood-800){% else %}#2a5aaa{% endif %};">{{ item.user.get_full_name|default:item.user.username|slice:":2"|upper }}</div>
+        <div>
+          <div class="mcn">{{ item.user.get_full_name|default:item.user.username }}</div>
+          <div class="mcs">@{{ item.user.username }}{% if item.user == request.user %} · You{% endif %}</div>
+        </div>
+      </div>
+      <span class="bv {% if item.profile.is_admin %}ba{% else %}bb{% endif %}">{{ item.profile.get_role_display }}</span>
+    </div>
+    <div class="mr"><span class="mrk">Email</span><span class="mrv">{{ item.user.email|default:'—' }}</span></div>
+    <div class="mr"><span class="mrk">Phone</span><span class="mrv">{{ item.profile.phone|default:'—' }}</span></div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <a class="bs" href="{% url 'edit_user' item.user.pk %}" style="flex:1;justify-content:center;"><i class="bi bi-pencil"></i> Edit</a>
+      {% if item.user != request.user %}
+      <form method="post" action="{% url 'delete_user' item.user.pk %}" onsubmit="return confirm('Delete?');" style="flex:1;">
+        {% csrf_token %}
+        <button type="submit" class="bs" style="width:100%;justify-content:center;color:#b33a36;border-color:#f5c6cb;"><i class="bi bi-trash3"></i> Delete</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+</div>
+
+<!-- Role info card -->
+<div class="cv" style="background:var(--wood-100);border-color:var(--wood-200);">
+  <div class="ch"><h6 style="color:var(--wood-800);"><i class="bi bi-info-circle"></i> Role Permissions</h6></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--wood-800);margin-bottom:8px;"><i class="bi bi-shield-check"></i> Admin</div>
+      <div style="font-size:12px;color:var(--ts);line-height:1.8;">
+        ✓ Dashboard &amp; Analytics<br>
+        ✓ All operations (Sales, Stock In)<br>
+        ✓ Customers, Suppliers, Products<br>
+        ✓ Receivables, Payables, Expenses<br>
+        ✓ User management
+      </div>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;color:#2a5aaa;margin-bottom:8px;"><i class="bi bi-person"></i> Limited User</div>
+      <div style="font-size:12px;color:var(--ts);line-height:1.8;">
+        ✗ Dashboard &amp; Analytics (hidden)<br>
+        ✓ Sales &amp; Stock In<br>
+        ✓ Customers, Suppliers, Products<br>
+        ✓ Receivables, Payables, Expenses<br>
+        ✗ User management
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

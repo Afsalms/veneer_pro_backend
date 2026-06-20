@@ -1,0 +1,27 @@
+{% extends "godown/base.html" %}
+{% block title %}Receivables{% endblock %}
+{% block page_title %}Receivables{% endblock %}
+{% block content %}
+<div class="sgrid cols-3">
+  <div class="sc"><div><div class="sl">Total Receivable</div><div class="sv" style="color:#b33a36;">₹{{ total_receivable|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">Overdue</div><div class="sv" style="color:#b33a36;">₹{{ overdue_amount|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">Collected This Month</div><div class="sv" style="color:#2d6a27;">₹{{ collected_month|floatformat:0 }}</div></div></div>
+</div>
+<div class="cv">
+  <div class="ch"><h6>Outstanding Receivables</h6></div>
+  <table class="tv dt"><thead><tr><th>Customer</th><th>Invoice</th><th>Due Date</th><th>Invoice Amt</th><th>Balance</th><th>Status</th><th></th></tr></thead>
+  <tbody>{% for s in outstanding %}
+  <tr><td style="font-weight:500;">{{ s.customer.name }}</td><td style="color:var(--wood-600);">{{ s.bill_number }}</td>
+  <td style="{% if s.is_overdue %}color:#b33a36;font-weight:500;{% endif %}">{{ s.due_date|default:'—' }}</td>
+  <td>₹{{ s.total_amount|floatformat:0 }}</td>
+  <td style="font-weight:600;color:#b33a36;">₹{{ s.balance|floatformat:0 }}</td>
+  <td><span class="bv {% if s.is_overdue %}br{% else %}ba{% endif %}">{% if s.is_overdue %}Overdue{% else %}Pending{% endif %}</span></td>
+  <td><a class="bs" href="{% url 'record_sale_payment' s.pk %}">Collect</a></td></tr>
+  {% empty %}<tr><td colspan="7" style="text-align:center;color:var(--tm);padding:30px;">No outstanding receivables.</td></tr>{% endfor %}</tbody></table>
+  <div class="ml">{% for s in outstanding %}
+  <div class="mc"><div class="mct"><div><div class="mcn">{{ s.customer.name }}</div><div class="mcs">{{ s.bill_number }} · Due {{ s.due_date|default:'N/A' }}</div></div><span class="bv {% if s.is_overdue %}br{% else %}ba{% endif %}">{% if s.is_overdue %}Overdue{% else %}Pending{% endif %}</span></div>
+  <div class="mr"><span class="mrk">Invoice</span><span class="mrv">₹{{ s.total_amount|floatformat:0 }}</span></div>
+  <div class="mr"><span class="mrk">Balance</span><span class="mrv" style="color:#b33a36;font-weight:600;">₹{{ s.balance|floatformat:0 }}</span></div>
+  <div style="margin-top:10px;"><a class="bw" href="{% url 'record_sale_payment' s.pk %}" style="width:100%;justify-content:center;">Record Collection</a></div></div>
+  {% endfor %}</div>
+</div>{% endblock %}

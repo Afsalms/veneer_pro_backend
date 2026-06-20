@@ -1,0 +1,107 @@
+{% extends "godown/base.html" %}
+{% block title %}Stock In{% endblock %}
+{% block page_title %}Stock In (GRN){% endblock %}
+{% block topbar_action %}<a class="bw" id="topbar-action" href="{% url 'add_stock_in' %}"><i class="bi bi-plus"></i> New GRN</a>{% endblock %}
+{% block fab %}<a id="fab" class="fab-show" href="{% url 'add_stock_in' %}" style="display:flex;"><i class="bi bi-plus"></i></a>{% endblock %}
+{% block content %}
+
+<!-- Stock snapshot -->
+<div class="cv" style="margin-bottom:14px;">
+  <div class="ch"><h6>Current Inventory</h6></div>
+  <table class="tv dt">
+    <thead><tr><th>Product</th><th>Stock (sqft)</th><th>Avg Cost</th><th>Stock Value</th><th>Status</th></tr></thead>
+    <tbody>{% for p in inventory %}
+    <tr>
+      <td style="font-weight:500;">{{ p.display_name }}</td>
+      <td>{{ p.stock_qty|floatformat:2 }}</td>
+      <td style="color:var(--tm);">₹{{ p.avg_cost|floatformat:2 }}/sqft</td>
+      <td>₹{{ p.stock_value|floatformat:0 }}</td>
+      <td><span class="bv {% if p.stock_status == 'ok' %}bg{% elif p.stock_status == 'low' %}ba{% else %}br{% endif %}">{{ p.stock_status|title }}</span></td>
+    </tr>{% endfor %}</tbody>
+  </table>
+</div>
+
+<div class="cv">
+  <div class="ch"><h6>GRN Records</h6><a class="bw" href="{% url 'add_stock_in' %}"><i class="bi bi-plus"></i> New GRN</a></div>
+  <table class="tv dt">
+    <thead><tr><th>GRN No</th><th>Date</th><th>Supplier</th><th>PO Ref</th><th>Items</th><th>Total</th><th>Landing</th><th>Advance</th><th>Paid</th><th>Balance</th></tr></thead>
+    <tbody id="si-tbody">
+    {% for g in grns %}
+    <tr>
+      <td><a href="{% url 'grn_detail' g.pk %}" style="font-weight:500;color:var(--wood-600);">{{ g.grn_number }}</a></td>
+      <td style="color:var(--tm);">{{ g.date }}</td>
+      <td>{{ g.supplier.name }}</td>
+      <td style="color:var(--tm);">{{ g.po.po_number|default:"—" }}</td>
+      <td>{% for item in g.items.all %}<div style="font-size:11px;">{{ item.product.display_name }}: <span style="font-weight:500;">{{ item.qty_display }}</span></div>{% endfor %}</td>
+      <td style="font-weight:500;">₹{{ g.items_total|floatformat:0 }}</td>
+      <td style="color:var(--tm);">₹{{ g.landing_expenses_total|floatformat:0 }}</td>
+      <td style="color:#2d6a27;">{% if g.po and g.po.advance_paid > 0 %}₹{{ g.po.advance_paid_inr|floatformat:0 }}{% else %}—{% endif %}</td>
+      <td style="color:#2d6a27;">₹{{ g.amount_paid_inr|floatformat:0 }}</td>
+      <td style="{% if g.balance > 0 %}color:#b33a36;font-weight:500;{% else %}color:#2d6a27;{% endif %}">₹{{ g.balance|floatformat:0 }}</td>
+    </tr>{% empty %}
+    <tr><td colspan="8" style="text-align:center;color:var(--tm);padding:30px;">No stock entries yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Mobile -->
+  <div class="ml" id="si-cards">
+  {% for g in grns %}
+  <div class="mc">
+    <div class="mct">
+      <div><div class="mcn">{{ g.supplier.name }}</div><div class="mcs">{{ g.grn_number }} · {{ g.date }}</div></div>
+      {% if g.balance > 0 %}<span class="bv br">₹{{ g.balance|floatformat:0 }} due</span>{% else %}<span class="bv bg">Paid</span>{% endif %}
+    </div>
+    {% for item in g.items.all %}<div class="mr"><span class="mrk">{{ item.product.display_name }}</span><span class="mrv">{{ item.qty_display }} @ ₹{{ item.rate_per_sqft }}/sqft</span></div>{% endfor %}
+    {% if g.po %}<div class="mr"><span class="mrk">PO Ref</span><span class="mrv">{{ g.po.po_number }}</span></div>{% endif %}
+    <div class="mr"><span class="mrk">Total</span><span class="mrv" style="font-weight:600;">₹{{ g.total_amount|floatformat:0 }}</span></div>
+  </div>{% endfor %}
+  </div>
+
+  {% if has_more %}
+  <div class="scroll-sentinel" id="si-sentinel"></div>
+  <div class="scroll-loader" id="si-loader"><span class="scroll-loader-dot"></span><span class="scroll-loader-dot"></span><span class="scroll-loader-dot"></span></div>
+  {% endif %}
+  <div class="scroll-end" id="si-end">All GRN records loaded</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if has_more %}
+<script>
+function renderSIRow(g) {
+  const items = g.products.map(p => `<div style="font-size:11px;">${p}</div>`).join('');
+  const balStyle = g.balance > 0 ? 'color:#b33a36;font-weight:500;' : '';
+  return `<tr>
+    <td style="font-weight:500;color:var(--wood-600);">${g.grn_number}</td>
+    <td style="color:var(--tm);">${g.date}</td>
+    <td>${g.supplier}</td>
+    <td style="color:var(--tm);">${g.po_number || '—'}</td>
+    <td>${items}</td>
+    <td style="font-weight:500;">₹${Math.round(g.total_amount - g.landing_total).toLocaleString('en-IN')}</td>
+    <td style="color:var(--tm);">₹${Math.round(g.landing_total).toLocaleString('en-IN')}</td>
+    <td style="${balStyle}">₹${Math.round(g.balance).toLocaleString('en-IN')}</td>
+  </tr>`;
+}
+function renderSICard(g) {
+  const balBadge = g.balance > 0
+    ? `<span class="bv br">₹${Math.round(g.balance).toLocaleString('en-IN')} due</span>`
+    : `<span class="bv bg">Paid</span>`;
+  return `<div class="mc">
+    <div class="mct"><div><div class="mcn">${g.supplier}</div><div class="mcs">${g.grn_number} · ${g.date}</div></div>${balBadge}</div>
+    <div class="mr"><span class="mrk">Total</span><span class="mrv" style="font-weight:600;">₹${Math.round(g.total_amount).toLocaleString('en-IN')}</span></div>
+  </div>`;
+}
+initInfiniteScroll({
+  tableBody:  '#si-tbody',
+  mobileList: '#si-cards',
+  fetchUrl:   '{% url "stock_in_list" %}',
+  renderRow:  renderSIRow,
+  renderCard: renderSICard,
+  sentinel:   '#si-sentinel',
+  loader:     '#si-loader',
+  endMsg:     '#si-end',
+});
+</script>
+{% endif %}
+{% endblock %}

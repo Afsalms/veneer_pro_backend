@@ -1,0 +1,528 @@
+{% extends "godown/base.html" %}
+{% block title %}New Sale{% endblock %}
+{% block page_title %}New Sale{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'sales_list' %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">New Sale Bill</span>
+</div>
+
+<form method="post" id="sale-form" novalidate>{% csrf_token %}
+
+<!-- ── Sale Type ── -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">Sale Type</div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;">
+    <label style="display:flex;align-items:center;gap:10px;padding:12px 16px;border:2px solid var(--wood-400);border-radius:10px;cursor:pointer;flex:1;min-width:160px;" id="type-bill-label">
+      <input type="radio" name="sale_type" value="bill" id="type-bill" checked onchange="onSaleTypeChange()" style="width:18px;height:18px;accent-color:var(--wood-600);">
+      <div>
+        <div style="font-weight:600;font-size:14px;">🧾 Tax Invoice</div>
+        <div style="font-size:11px;color:var(--tm);margin-top:2px;">Formal GST bill · SL-XXXX · GST applicable</div>
+      </div>
+    </label>
+    <label style="display:flex;align-items:center;gap:10px;padding:12px 16px;border:2px solid var(--border);border-radius:10px;cursor:pointer;flex:1;min-width:160px;" id="type-cash-label">
+      <input type="radio" name="sale_type" value="cash_memo" id="type-cash" onchange="onSaleTypeChange()" style="width:18px;height:18px;accent-color:var(--wood-600);">
+      <div>
+        <div style="font-weight:600;font-size:14px;">💵 Cash Memo</div>
+        <div style="font-size:11px;color:var(--tm);margin-top:2px;">No formal bill · CM-XXXX · No GST</div>
+      </div>
+    </label>
+  </div>
+</div>
+
+<!-- ── Bill Details ── -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">Bill Details</div>
+
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Customer *</label>
+      <select class="fc fsel" name="customer" required onchange="onCustomerChange(this)">
+        <option value="">Select customer</option>
+        {% for c in customers %}
+        <option value="{{ c.pk }}"
+          data-credit-limit="{{ c.credit_limit|floatformat:0 }}"
+          data-outstanding="{{ c.computed_outstanding|floatformat:0 }}">
+          {{ c.name }}{% if c.credit_limit > 0 %} (Limit: ₹{{ c.credit_limit|floatformat:0 }}){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="fhalf">
+      <label class="fl">Date *</label>
+      <input class="fc" name="date" type="date" required value="{% now 'Y-m-d' %}">
+    </div>
+  </div>
+
+  <!-- Credit limit bar -->
+  <div id="credit-limit-bar" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:10px;"></div>
+
+  <div class="frow">
+    <div class="fhalf"><label class="fl">Due Date</label><input class="fc" name="due_date" type="date"></div>
+    <div class="fhalf"><label class="fl">Customer PO No</label><input class="fc" name="po_reference" placeholder="Optional"></div>
+  </div>
+
+  <div class="frow">
+    <div class="ffull"><label class="fl">Transport / Vehicle</label><input class="fc" name="transport" placeholder="Optional"></div>
+  </div>
+</div>
+
+<!-- ── Items Sold ── -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <span style="font-size:13px;font-weight:600;color:var(--ts);">Items Sold</span>
+    <button type="button" class="add-item-btn" id="add-sale-item"><i class="bi bi-plus"></i> Add Item</button>
+  </div>
+
+  <div id="sale-items"></div>
+
+  <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:13px;color:var(--tm);">Taxable Amount</span>
+      <span style="font-size:18px;font-weight:700;font-family:'Fraunces',serif;" id="sale-total">₹0</span>
+    </div>
+    <div id="gst-row" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+      <span style="font-size:12px;color:var(--tm);">GST ({{ godown_obj.gst_rate }}%)</span>
+      <span style="font-size:13px;color:var(--tm);" id="sale-gst">₹0</span>
+    </div>
+    <div id="grand-row" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding-top:8px;border-top:1px solid var(--border);">
+      <span style="font-size:13px;font-weight:600;color:var(--ts);">Grand Total (incl. GST)</span>
+      <span style="font-size:20px;font-weight:700;font-family:'Fraunces',serif;color:var(--wood-800);" id="sale-grand">₹0</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── e-Way Bill Details (Tax Invoice only) ── -->
+<div class="cv" id="eway-card" style="margin-bottom:14px;display:none;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--ts);">e-Way Bill Details</div>
+      <div style="font-size:11px;color:var(--tm);margin-top:2px;">Required for interstate goods movement above ₹50,000 · Ready for GSP integration</div>
+    </div>
+    <button type="button" id="eway-toggle" onclick="toggleEway()"
+            style="font-size:12px;padding:4px 12px;border:1px solid var(--border);border-radius:6px;background:var(--body-bg);cursor:pointer;color:var(--ts);">
+      <i class="bi bi-chevron-down" id="eway-chevron"></i> Add Details
+    </button>
+  </div>
+
+  <div id="eway-fields" style="display:none;border-top:1px dashed var(--border);padding-top:14px;margin-top:10px;">
+
+    <div style="font-size:11px;font-weight:600;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Transport</div>
+    <div class="frow">
+      <div class="fthird">
+        <label class="fl">Vehicle No</label>
+        <input class="fc" name="vehicle_number" placeholder="KL01AB1234">
+      </div>
+      <div class="fthird">
+        <label class="fl">Distance (km)</label>
+        <input class="fc" name="transport_distance" type="number" placeholder="e.g. 120">
+      </div>
+      <div class="fthird">
+        <label class="fl">Transport Mode</label>
+        <select class="fc fsel" name="transport_mode">
+          <option value="1">Road</option>
+          <option value="2">Rail</option>
+          <option value="3">Air</option>
+          <option value="4">Ship</option>
+        </select>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fhalf">
+        <label class="fl">Transporter GSTIN</label>
+        <input class="fc" name="transporter_id" placeholder="29AAAAA0000A1Z5" style="font-family:monospace;">
+      </div>
+      <div class="fhalf">
+        <label class="fl">Transporter Name</label>
+        <input class="fc" name="transporter_name" placeholder="">
+      </div>
+    </div>
+
+    <div style="font-size:11px;font-weight:600;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-top:16px;margin-bottom:10px;">Ship-To Address <span style="font-weight:400;">(if different from buyer billing address)</span></div>
+    <div class="frow">
+      <div class="fhalf">
+        <label class="fl">Consignee Name</label>
+        <input class="fc" name="ship_name" placeholder="">
+      </div>
+      <div class="fhalf">
+        <label class="fl">Address Line 1</label>
+        <input class="fc" name="ship_addr1" placeholder="">
+      </div>
+    </div>
+    <div class="frow">
+      <div class="fhalf">
+        <label class="fl">Pincode</label>
+        <input class="fc" name="ship_pincode" placeholder="682001" maxlength="6">
+      </div>
+      <div class="fhalf">
+        <label class="fl">State Code</label>
+        <input class="fc" name="ship_state" placeholder="32 (Kerala)" maxlength="2">
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Payment ── -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">Payment</div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Amount Received (₹)</label>
+      <input class="fc" name="amount_received" type="number" step="0.01" min="0" placeholder="0">
+    </div>
+    <div class="fhalf">
+      <label class="fl">Payment Mode</label>
+      <select class="fc fsel" name="payment_mode">
+        <option value="credit">Credit (Pay Later)</option>
+        <option value="cash">Cash</option>
+        <option value="bank">Bank Transfer</option>
+        <option value="cheque">Cheque</option>
+        <option value="upi">UPI</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="fp-actions">
+  <a class="bs" href="{% url 'sales_list' %}">Cancel</a>
+  <button class="bw" type="submit" id="sale-submit"><i class="bi bi-check2"></i> Save Bill</button>
+</div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const GST_RATE = {{ godown_obj.gst_rate|floatformat:2 }};
+
+// Product data
+const PRODUCTS = {
+  {% for p in products %}
+  {{ p.pk }}: {
+    id: {{ p.pk }},
+    name: "{{ p }}",
+    display: "{{ p.display_name }}",
+    stock: {{ p.stock_qty|floatformat:4 }},
+    sale_rate: {{ p.sale_rate|floatformat:2 }},
+    avg_cost: {{ p.avg_cost|floatformat:4 }},
+    status: "{{ p.stock_status }}"
+  },
+  {% endfor %}
+};
+
+let saleCount = 0;
+
+// ── Product options ───────────────────────────────────────────────
+function productOpts() {
+  let opts = '<option value="">Select product</option>';
+  for (const [id, p] of Object.entries(PRODUCTS)) {
+    const label = p.stock <= 0 ? ' ⚠ Out of stock' : ` (${p.stock.toFixed(0)} sqft available)`;
+    opts += `<option value="${p.id}" data-stock="${p.stock}" data-rate="${p.sale_rate}"
+             ${p.stock <= 0 ? 'style="color:#b33a36;"' : ''}>${p.name}${label}</option>`;
+  }
+  return opts;
+}
+
+// ── Line item HTML ────────────────────────────────────────────────
+function saleItemHTML(n) {
+  return `
+  <div class="line-item" style="margin-bottom:12px;align-items:flex-start;">
+    <div class="li-num" style="margin-top:30px;">${n}</div>
+    <div style="flex:1;min-width:0;">
+      <div class="frow">
+        <div class="fhalf">
+          <label class="fl">Product *</label>
+          <select class="fc fsel" name="product[]" onchange="onSaleProductChange(this)">
+            ${productOpts()}
+          </select>
+        </div>
+        <div class="fhalf">
+          <label class="fl">Size (optional)</label>
+          <input class="fc" name="size[]" placeholder="e.g. 8×4 ft">
+        </div>
+      </div>
+      <!-- Stock info bar -->
+      <div class="stock-info-bar" style="display:none;margin:-6px 0 10px;padding:8px 12px;border-radius:7px;font-size:12px;"></div>
+      <div class="frow">
+        <div class="fthird">
+          <label class="fl">Qty (sqft) *</label>
+          <input class="fc sale-qty" name="qty_sqft[]" type="number" step="0.01" min="0.01"
+                 placeholder="0.00" oninput="onSaleQtyInput(this)">
+        </div>
+        <div class="fthird">
+          <label class="fl">Rate (₹/sqft) *</label>
+          <input class="fc" name="rate_per_sqft[]" type="number" step="0.01" min="0.01"
+                 placeholder="0.00" oninput="calcSaleLine(this.closest('.line-item'))">
+        </div>
+        <div class="fthird">
+          <label class="fl">Amount (₹)</label>
+          <input class="fc li-amt" readonly placeholder="auto" style="background:#f0ebe3;font-weight:600;">
+        </div>
+      </div>
+    </div>
+    <button type="button" class="li-del" onclick="removeSaleItem(this)"
+            style="display:none;margin-top:28px;flex-shrink:0;">
+      <i class="bi bi-trash3"></i>
+    </button>
+  </div>`;
+}
+
+function addSaleItem() {
+  saleCount++;
+  document.getElementById('sale-items').insertAdjacentHTML('beforeend', saleItemHTML(saleCount));
+  refreshDelBtns();
+}
+
+function removeSaleItem(btn) {
+  btn.closest('.line-item').remove();
+  document.querySelectorAll('#sale-items .line-item').forEach((li, i) => {
+    const n = li.querySelector('.li-num');
+    if (n) n.textContent = i + 1;
+  });
+  refreshDelBtns();
+  calcSaleTotal();
+}
+
+function refreshDelBtns() {
+  const items = document.querySelectorAll('#sale-items .line-item');
+  items.forEach(li => {
+    const btn = li.querySelector('.li-del');
+    if (btn) btn.style.display = items.length > 1 ? 'flex' : 'none';
+  });
+}
+
+// ── Product selected ──────────────────────────────────────────────
+function onSaleProductChange(sel) {
+  const li    = sel.closest('.line-item');
+  const pid   = sel.value;
+  const bar   = li.querySelector('.stock-info-bar');
+  const rateEl = li.querySelector('[name="rate_per_sqft[]"]');
+
+  if (!pid) { bar.style.display = 'none'; return; }
+
+  const prod = PRODUCTS[pid];
+  if (!prod) return;
+
+  if (rateEl && !rateEl.value && prod.sale_rate > 0)
+    rateEl.value = prod.sale_rate.toFixed(2);
+
+  bar.style.display = '';
+  if (prod.stock <= 0) {
+    bar.style.background = '#fdecea'; bar.style.border = '1px solid #f5c6cb'; bar.style.color = '#b33a36';
+    bar.innerHTML = `<i class="bi bi-exclamation-triangle"></i> <strong>Out of stock</strong> — ${prod.display}`;
+  } else if (prod.status === 'critical' || prod.status === 'low') {
+    bar.style.background = '#fef6e4'; bar.style.border = '1px solid #fde8a0'; bar.style.color = '#a06a10';
+    bar.innerHTML = `<i class="bi bi-exclamation-circle"></i> <strong>${prod.stock.toFixed(2)} sqft</strong> available · ${prod.status === 'critical' ? 'Critical' : 'Low'} stock`;
+  } else {
+    bar.style.background = '#eaf5e8'; bar.style.border = '1px solid #c3e6cb'; bar.style.color = '#2d6a27';
+    bar.innerHTML = `<i class="bi bi-check-circle"></i> <strong>${prod.stock.toFixed(2)} sqft</strong> available`;
+  }
+
+  const qtyEl = li.querySelector('.sale-qty');
+  if (qtyEl && qtyEl.value) onSaleQtyInput(qtyEl);
+  calcSaleLine(li);
+}
+
+// ── Qty input — live stock warning ───────────────────────────────
+function onSaleQtyInput(qtyEl) {
+  const li  = qtyEl.closest('.line-item');
+  const pid = li.querySelector('[name="product[]"]')?.value;
+  const qty = parseFloat(qtyEl.value) || 0;
+  const bar = li.querySelector('.stock-info-bar');
+
+  if (pid && qty > 0) {
+    const prod = PRODUCTS[pid];
+    if (prod) {
+      if (qty > prod.stock) {
+        bar.style.display = '';
+        bar.style.background = '#fdecea'; bar.style.border = '1px solid #f5c6cb'; bar.style.color = '#b33a36';
+        bar.innerHTML = `<i class="bi bi-x-circle"></i> <strong>Insufficient stock.</strong> Entered ${qty.toFixed(2)} sqft · only <strong>${prod.stock.toFixed(2)} sqft</strong> available.`;
+        qtyEl.style.borderColor = '#b33a36';
+      } else {
+        const rem = prod.stock - qty;
+        bar.style.background = rem < 100 ? '#fef6e4' : '#eaf5e8';
+        bar.style.border     = rem < 100 ? '1px solid #fde8a0' : '1px solid #c3e6cb';
+        bar.style.color      = rem < 100 ? '#a06a10' : '#2d6a27';
+        bar.innerHTML = `<i class="bi bi-check-circle"></i> OK · <strong>${rem.toFixed(2)} sqft</strong> will remain after this sale.`;
+        qtyEl.style.borderColor = '';
+      }
+    }
+  }
+  calcSaleLine(li);
+}
+
+// ── Totals ────────────────────────────────────────────────────────
+function calcSaleLine(li) {
+  const qty  = parseFloat(li.querySelector('.sale-qty')?.value) || 0;
+  const rate = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;
+  const amt  = qty * rate;
+  const el   = li.querySelector('.li-amt');
+  if (el) el.value = amt > 0 ? amt.toLocaleString('en-IN', {maximumFractionDigits:2}) : '';
+  calcSaleTotal();
+}
+
+function calcSaleTotal() {
+  const isBill = document.getElementById('type-bill').checked;
+  let taxable = 0;
+  document.querySelectorAll('#sale-items .li-amt').forEach(a => {
+    taxable += parseFloat((a.value || '0').replace(/,/g, '')) || 0;
+  });
+  const gst   = isBill ? taxable * GST_RATE / 100 : 0;
+  const grand = taxable + gst;
+
+  document.getElementById('sale-total').textContent =
+    '₹' + taxable.toLocaleString('en-IN', {maximumFractionDigits:0});
+  document.getElementById('sale-gst').textContent =
+    '₹' + gst.toLocaleString('en-IN', {maximumFractionDigits:0});
+  document.getElementById('sale-grand').textContent =
+    '₹' + grand.toLocaleString('en-IN', {maximumFractionDigits:0});
+
+  checkCreditLimitLive();
+}
+
+// ── Sale type toggle ──────────────────────────────────────────────
+function onSaleTypeChange() {
+  const isBill = document.getElementById('type-bill').checked;
+  document.getElementById('type-bill-label').style.borderColor = isBill ? 'var(--wood-400)' : 'var(--border)';
+  document.getElementById('type-cash-label').style.borderColor = !isBill ? 'var(--wood-400)' : 'var(--border)';
+  // Show e-Way Bill card only for tax invoices
+  document.getElementById('eway-card').style.display = isBill ? '' : 'none';
+  // Recalculate totals (GST changes)
+  calcSaleTotal();
+}
+
+// ── e-Way Bill toggle ─────────────────────────────────────────────
+function toggleEway() {
+  const fields  = document.getElementById('eway-fields');
+  const chevron = document.getElementById('eway-chevron');
+  const btn     = document.getElementById('eway-toggle');
+  const open    = fields.style.display === 'none';
+  fields.style.display  = open ? '' : 'none';
+  chevron.className     = open ? 'bi bi-chevron-up' : 'bi bi-chevron-down';
+  btn.innerHTML         = `<i class="${chevron.className}" id="eway-chevron"></i> ${open ? 'Hide Details' : 'Add Details'}`;
+}
+
+// ── Credit limit ──────────────────────────────────────────────────
+function onCustomerChange(sel) {
+  const opt  = sel.options[sel.selectedIndex];
+  const bar  = document.getElementById('credit-limit-bar');
+  if (!sel.value) { bar.style.display = 'none'; return; }
+
+  const limit       = parseFloat(opt.dataset.creditLimit) || 0;
+  const outstanding = parseFloat(opt.dataset.outstanding)  || 0;
+  if (limit <= 0) { bar.style.display = 'none'; checkCreditLimitLive(); return; }
+
+  const available = Math.max(0, limit - outstanding);
+  bar.style.display = '';
+  if (outstanding >= limit) {
+    bar.style.background = '#fdecea'; bar.style.border = '1px solid #f5c6cb';
+    bar.innerHTML = `<i class="bi bi-x-circle" style="color:#b33a36;"></i> <strong style="color:#b33a36;">Credit limit reached.</strong> Outstanding ₹${outstanding.toLocaleString('en-IN')} = full limit of ₹${limit.toLocaleString('en-IN')}.`;
+  } else {
+    bar.style.background = '#eaf5e8'; bar.style.border = '1px solid #c3e6cb';
+    bar.innerHTML = `<i class="bi bi-credit-card" style="color:#2d6a27;"></i> Limit: <strong>₹${limit.toLocaleString('en-IN')}</strong> · Outstanding: <strong>₹${outstanding.toLocaleString('en-IN')}</strong> · <strong style="color:#2d6a27;">Available: ₹${available.toLocaleString('en-IN')}</strong>`;
+  }
+  checkCreditLimitLive();
+}
+
+function getCreditInfo() {
+  const sel = document.querySelector('[name="customer"]');
+  if (!sel || !sel.value) return null;
+  const opt = sel.options[sel.selectedIndex];
+  return {
+    limit:       parseFloat(opt.dataset.creditLimit) || 0,
+    outstanding: parseFloat(opt.dataset.outstanding)  || 0,
+    available:   Math.max(0, parseFloat(opt.dataset.creditLimit) - parseFloat(opt.dataset.outstanding)),
+  };
+}
+
+function checkCreditLimitLive() {
+  const info = getCreditInfo();
+  if (!info || info.limit <= 0) return;
+  let saleTotal = 0;
+  document.querySelectorAll('#sale-items .li-amt').forEach(a => {
+    saleTotal += parseFloat((a.value || '0').replace(/,/g, '')) || 0;
+  });
+  const newOutstanding = info.outstanding + saleTotal;
+  const bar = document.getElementById('credit-limit-bar');
+  if (saleTotal > 0 && newOutstanding > info.limit) {
+    const over = newOutstanding - info.limit;
+    bar.style.display = '';
+    bar.style.background = '#fef6e4'; bar.style.border = '1px solid #fde8a0';
+    bar.innerHTML = `<i class="bi bi-exclamation-triangle" style="color:#a06a10;"></i> <strong style="color:#a06a10;">Credit limit warning.</strong> This sale ₹${saleTotal.toLocaleString('en-IN')} + outstanding ₹${info.outstanding.toLocaleString('en-IN')} = ₹${newOutstanding.toLocaleString('en-IN')} — exceeds limit by <strong>₹${over.toLocaleString('en-IN')}</strong>.`;
+  } else if (saleTotal > 0) {
+    onCustomerChange(document.querySelector('[name="customer"]'));
+  }
+}
+
+// ── Submit validation ─────────────────────────────────────────────
+document.getElementById('sale-submit').addEventListener('click', async function(e) {
+  e.preventDefault();
+  const errors = [];
+
+  if (!document.querySelector('[name="customer"]').value) {
+    errors.push('Please select a customer.');
+    document.querySelector('[name="customer"]').style.borderColor = '#b33a36';
+  }
+  if (!document.querySelector('[name="date"]').value) {
+    errors.push('Please enter a date.');
+    document.querySelector('[name="date"]').style.borderColor = '#b33a36';
+  }
+
+  let hasValidItem = false;
+  const overStockErrors = [];
+  document.querySelectorAll('#sale-items .line-item').forEach((li, idx) => {
+    const pid  = li.querySelector('[name="product[]"]')?.value;
+    const qty  = parseFloat(li.querySelector('.sale-qty')?.value) || 0;
+    const rate = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;
+    if (!pid && qty === 0 && rate === 0) return;
+    const n = idx + 1;
+    if (!pid)   { errors.push(`Item ${n}: Select a product.`); li.querySelector('[name="product[]"]').style.borderColor = '#b33a36'; }
+    if (qty <= 0)  { errors.push(`Item ${n}: Enter quantity.`); li.querySelector('.sale-qty').style.borderColor = '#b33a36'; }
+    if (rate <= 0) { errors.push(`Item ${n}: Enter rate.`); li.querySelector('[name="rate_per_sqft[]"]').style.borderColor = '#b33a36'; }
+    if (pid && qty > 0) {
+      const prod = PRODUCTS[pid];
+      if (prod) {
+        if (prod.stock <= 0) overStockErrors.push(`${prod.display} is out of stock.`);
+        else if (qty > prod.stock) overStockErrors.push(`${prod.display}: only ${prod.stock.toFixed(2)} sqft available, entered ${qty.toFixed(2)} sqft.`);
+      }
+    }
+    if (pid && qty > 0 && rate > 0) hasValidItem = true;
+  });
+
+  if (!hasValidItem && errors.length === 0)
+    errors.push('Add at least one item with product, quantity and rate.');
+
+  // Credit limit
+  const creditInfo = getCreditInfo();
+  if (creditInfo && creditInfo.limit > 0) {
+    let saleTotal = 0;
+    document.querySelectorAll('#sale-items .li-amt').forEach(a => {
+      saleTotal += parseFloat((a.value || '0').replace(/,/g, '')) || 0;
+    });
+    if (info.outstanding + saleTotal > creditInfo.limit) {
+      const over = (creditInfo.outstanding + saleTotal - creditInfo.limit).toLocaleString('en-IN');
+      const ok = await vp.confirm(`This sale will exceed the customer's credit limit by ₹${over}.\nProceed anyway?`, 'Credit Limit Exceeded', 'warning');
+      if (!ok) return;
+    }
+  }
+
+  const allErrors = [...errors, ...overStockErrors];
+  if (allErrors.length > 0) {
+    await vp.alert(allErrors.join('\n'), 'Cannot save — please fix these', 'warning');
+    return;
+  }
+
+  document.getElementById('sale-form').submit();
+});
+
+// Clear red borders
+document.getElementById('sale-form').addEventListener('input', e => {
+  if (e.target.style.borderColor === 'rgb(179, 58, 54)') e.target.style.borderColor = '';
+});
+
+// Init
+document.getElementById('add-sale-item').onclick = addSaleItem;
+addSaleItem();
+addSaleItem();
+</script>
+{% endblock %}

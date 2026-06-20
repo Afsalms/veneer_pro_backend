@@ -1,0 +1,92 @@
+{% extends "godown/base.html" %}
+{% block title %}Purchase Orders{% endblock %}
+{% block page_title %}Purchase Orders{% endblock %}
+{% block topbar_action %}<a class="bw" id="topbar-action" href="{% url 'add_po' %}"><i class="bi bi-plus"></i> New PO</a>{% endblock %}
+{% block fab %}<a id="fab" class="fab-show" href="{% url 'add_po' %}" style="display:flex;"><i class="bi bi-plus"></i></a>{% endblock %}
+{% block content %}
+<div class="cv">
+  <div class="ch"><h6>Purchase Orders</h6><a class="bw" href="{% url 'add_po' %}"><i class="bi bi-plus"></i> New PO</a></div>
+  <table class="tv dt">
+    <thead><tr><th>PO No</th><th>Date</th><th>Supplier</th><th>Expected</th><th>Items (Ordered / Received)</th><th>Value</th><th>Advance</th><th>Status</th><th></th></tr></thead>
+    <tbody id="po-tbody">
+    {% for po in pos %}
+    <tr>
+      <td style="font-weight:500;color:var(--wood-600);">{{ po.po_number }}</td>
+      <td style="color:var(--tm);">{{ po.date }}</td>
+      <td>{{ po.supplier.name }}</td>
+      <td style="{% if po.is_overdue %}color:#b33a36;{% else %}color:var(--tm);{% endif %}">{{ po.expected_arrival|default:"—" }}</td>
+      <td>{% for item in po.po_items.all %}
+        <div style="font-size:11px;">
+          {{ item.product.display_name }}:
+          <span style="color:{% if item.is_fully_received %}#2d6a27{% else %}#a06a10{% endif %};font-weight:500;">
+            {{ item.qty_received|floatformat:0 }}/{{ item.qty_sqft|floatformat:0 }} sqft
+          </span>
+        </div>
+      {% endfor %}</td>
+      <td style="font-weight:500;">₹{{ po.total_value|floatformat:0 }}</td>
+      <td style="color:#2d6a27;">₹{{ po.advance_paid|floatformat:0 }}</td>
+      <td><span class="bv {% if po.status == 'received' %}bg{% elif po.status == 'cancelled' %}br{% elif po.status == 'partial' %}ba{% else %}bb{% endif %}">{{ po.get_status_display }}</span></td>
+      <td><a class="bs" href="{% url 'po_detail' po.pk %}">View</a></td>
+    </tr>{% empty %}
+    <tr><td colspan="9" style="text-align:center;color:var(--tm);padding:30px;">No purchase orders yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="ml" id="po-cards">
+  {% for po in pos %}
+  <div class="mc">
+    <div class="mct">
+      <div><div class="mcn">{{ po.supplier.name }}</div><div class="mcs">{{ po.po_number }} · {{ po.date }}</div></div>
+      <span class="bv {% if po.status == 'received' %}bg{% elif po.status == 'cancelled' %}br{% elif po.status == 'partial' %}ba{% else %}bb{% endif %}">{{ po.get_status_display }}</span>
+    </div>
+    {% for item in po.po_items.all %}<div class="mr"><span class="mrk">{{ item.product.display_name }}</span><span class="mrv" style="color:{% if item.is_fully_received %}#2d6a27{% else %}#a06a10{% endif %};">{{ item.qty_received|floatformat:0 }}/{{ item.qty_sqft|floatformat:0 }} sqft</span></div>{% endfor %}
+    <div class="mr"><span class="mrk">Value</span><span class="mrv" style="font-weight:600;">₹{{ po.total_value|floatformat:0 }}</span></div>
+    <div style="margin-top:10px;"><a class="bw" href="{% url 'po_detail' po.pk %}" style="width:100%;justify-content:center;">View Details</a></div>
+  </div>{% endfor %}
+  </div>
+
+  {% if has_more %}
+  <div class="scroll-sentinel" id="po-sentinel"></div>
+  <div class="scroll-loader" id="po-loader"><span class="scroll-loader-dot"></span><span class="scroll-loader-dot"></span><span class="scroll-loader-dot"></span></div>
+  {% endif %}
+  <div class="scroll-end" id="po-end">All purchase orders loaded</div>
+</div>
+{% endblock %}
+{% block extra_js %}
+{% if has_more %}
+<script>
+function renderPORow(p) {
+  const items = p.items.map(i => {
+    const col = i.is_fully ? '#2d6a27' : '#a06a10';
+    return `<div style="font-size:11px;">${i.product}: <span style="color:${col};font-weight:500;">${i.qty_received.toFixed(0)}/${i.qty_ordered.toFixed(0)} sqft</span></div>`;
+  }).join('');
+  const badge = p.status==='received'?'bg':p.status==='cancelled'?'br':p.status==='partial'?'ba':'bb';
+  return `<tr>
+    <td style="font-weight:500;color:var(--wood-600);">${p.po_number}</td>
+    <td style="color:var(--tm);">${p.date}</td><td>${p.supplier}</td>
+    <td style="color:var(--tm);">${p.expected_arrival||'—'}</td>
+    <td>${items}</td>
+    <td style="font-weight:500;">₹${Math.round(p.total_value).toLocaleString('en-IN')}</td>
+    <td style="color:#2d6a27;">₹${Math.round(p.advance_paid).toLocaleString('en-IN')}</td>
+    <td><span class="bv ${badge}">${p.status_display}</span></td>
+    <td><a class="bs" href="${p.detail_url}">View</a></td>
+  </tr>`;
+}
+function renderPOCard(p) {
+  const badge = p.status==='received'?'bg':p.status==='cancelled'?'br':p.status==='partial'?'ba':'bb';
+  return `<div class="mc">
+    <div class="mct"><div><div class="mcn">${p.supplier}</div><div class="mcs">${p.po_number} · ${p.date}</div></div><span class="bv ${badge}">${p.status_display}</span></div>
+    <div class="mr"><span class="mrk">Value</span><span class="mrv" style="font-weight:600;">₹${Math.round(p.total_value).toLocaleString('en-IN')}</span></div>
+    <div style="margin-top:10px;"><a class="bw" href="${p.detail_url}" style="width:100%;justify-content:center;">View</a></div>
+  </div>`;
+}
+initInfiniteScroll({
+  tableBody:'#po-tbody', mobileList:'#po-cards',
+  fetchUrl:'{% url "po_list" %}',
+  renderRow:renderPORow, renderCard:renderPOCard,
+  sentinel:'#po-sentinel', loader:'#po-loader', endMsg:'#po-end',
+});
+</script>
+{% endif %}
+{% endblock %}

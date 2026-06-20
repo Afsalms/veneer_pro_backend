@@ -1,0 +1,145 @@
+{% extends "godown/base.html" %}
+{% block title %}Stock Board{% endblock %}
+{% block page_title %}Live Stock Board{% endblock %}
+{% block content %}
+
+<!-- Stock summary stats -->
+<div class="sgrid" style="margin-bottom:14px;">
+  <div class="sc"><div><div class="sl">Total Products</div><div class="sv">{{ total_count }}</div></div></div>
+  <div class="sc"><div><div class="sl">Healthy Stock</div><div class="sv" style="color:#2d6a27;">{{ ok_count }}</div></div></div>
+  <div class="sc"><div><div class="sl">Low Stock</div><div class="sv" style="color:#a06a10;">{{ low_count }}</div></div></div>
+  <div class="sc"><div><div class="sl">Critical / Out</div><div class="sv" style="color:#b33a36;">{{ critical_count|add:out_count }}</div></div></div>
+</div>
+<!-- Filters -->
+<div class="cv" style="margin-bottom:14px;">
+  <form method="get" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+    <div style="flex:2;min-width:140px;"><label class="fl">Search Species</label><input class="fc" name="q" value="{{ q }}" placeholder="Teak, Oak, Walnut…" autocomplete="off"></div>
+    <div style="flex:1;min-width:110px;"><label class="fl">Species</label>
+      <select class="fc fsel" name="species">
+        <option value="">All Species</option>
+        {% for s in species_list %}<option value="{{ s }}" {% if sel_species == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </div>
+    <div style="flex:1;min-width:100px;"><label class="fl">Thickness</label>
+      <select class="fc fsel" name="thickness">
+        <option value="">All</option>
+        {% for t in thickness_list %}<option value="{{ t }}" {% if sel_thickness == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div style="flex:1;min-width:100px;"><label class="fl">Stock Status</label>
+      <select class="fc fsel" name="status">
+        <option value="">All</option>
+        <option value="ok" {% if sel_status == 'ok' %}selected{% endif %}>In Stock</option>
+        <option value="low" {% if sel_status == 'low' %}selected{% endif %}>Low / Critical</option>
+        <option value="out" {% if sel_status == 'out' %}selected{% endif %}>Out of Stock</option>
+      </select>
+    </div>
+    <div><button class="bw" type="submit"><i class="bi bi-search"></i> Filter</button></div>
+    {% if q or sel_species or sel_thickness or sel_status %}<div><a class="bs" href="{% url 'stock_board' %}"><i class="bi bi-x"></i> Clear</a></div>{% endif %}
+  </form>
+</div>
+
+<!-- Stock table -->
+<div class="cv">
+  <div class="ch">
+    <h6>{{ products|length }} product{{ products|length|pluralize }}</h6>
+    <div style="display:flex;gap:8px;font-size:12px;">
+      <span class="bv bg">OK</span>
+      <span class="bv ba">Low</span>
+      <span class="bv br">Critical / Out</span>
+    </div>
+  </div>
+
+  <!-- Desktop table -->
+  <table class="tv dt">
+    <thead>
+      <tr>
+        <th>Species</th>
+        <th>Thickness</th>
+        <th>Cut / Finish</th>
+        <th class="right">Stock (sqft)</th>
+        <th class="right">Avg Cost</th>
+        <th class="right">Sale Rate</th>
+        <th class="right">Margin</th>
+        <th class="right">Stock Value</th>
+        <th>Rack</th>
+        <th>Velocity</th>
+        <th>Days Left</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for p in products %}
+    {% with racks=rack_map|default:'' %}
+    <tr>
+      <td style="font-weight:600;">{{ p.species }}</td>
+      <td>{{ p.thickness }}</td>
+      <td style="color:var(--tm);font-size:12px;">{{ p.cut_type }} · {{ p.finish }}</td>
+      <td class="right" style="font-weight:600;font-size:14px;{% if p.stock_status == 'critical' or p.stock_status == 'out' %}color:#b33a36;{% elif p.stock_status == 'low' %}color:#a06a10;{% endif %}">
+        {{ p.stock_qty|floatformat:0 }}
+      </td>
+      <td class="right" style="color:var(--ts);">₹{{ p.avg_cost|floatformat:2 }}</td>
+      <td class="right" style="color:var(--wood-600);font-weight:500;">₹{{ p.sale_rate|floatformat:2 }}</td>
+      <td class="right">
+        {% if p.avg_cost > 0 %}
+          {% widthratio p.sale_rate|add:0 p.avg_cost 1 as ratio %}
+          <span style="font-weight:500;color:{% if p.sale_rate > p.avg_cost %}#2d6a27{% else %}#b33a36{% endif %};">
+            {{ p.sale_rate|floatformat:0|add:0 }}% {# placeholder — real calc below #}
+            {% with margin=p.sale_rate %}
+            {% endwith %}
+          </span>
+        {% else %}—{% endif %}
+      </td>
+      <td class="right" style="font-weight:500;">₹{{ p.stock_value|floatformat:0 }}</td>
+      <td style="font-size:11px;color:var(--ts);">
+        {% if p.pk in rack_map %}{{ rack_map|default:'' }}{% endif %}
+        —
+      </td>
+      <td style="font-size:12px;color:var(--tm);">
+        {% if p.avg_daily %}{{ p.avg_daily }} sqft/day{% else %}<span style="color:#ccc;">—</span>{% endif %}
+      </td>
+      <td>
+        {% if p.days_left is not None %}
+          <span class="bv {% if p.days_left <= 7 %}br{% elif p.days_left <= 21 %}ba{% else %}bg{% endif %}" style="font-size:11px;">
+            {{ p.days_left|floatformat:0 }}d
+          </span>
+        {% else %}<span style="color:#ccc;font-size:12px;">—</span>{% endif %}
+      </td>
+      <td><span class="bv {% if p.stock_status == 'ok' %}bg{% elif p.stock_status == 'low' %}ba{% elif p.stock_status == 'critical' %}br{% else %}br{% endif %}">{{ p.stock_status|title }}</span></td>
+    </tr>
+    {% endwith %}
+    {% empty %}
+    <tr><td colspan="12" style="text-align:center;color:var(--tm);padding:30px;">No products found.</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr style="background:var(--wood-100);font-weight:700;">
+        <td colspan="7" style="padding:10px 12px;">Total Stock Value</td>
+        <td class="right" style="padding:10px 12px;color:var(--wood-800);">₹{% for p in products %}{{ p.stock_value|add:0 }}{% endfor %} —</td>
+        <td colspan="4"></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <!-- Mobile cards -->
+  <div class="ml">
+  {% for p in products %}
+  <div class="mc">
+    <div class="mct">
+      <div>
+        <div class="mcn">{{ p.species }} {{ p.thickness }}</div>
+        <div class="mcs">{{ p.cut_type }} · {{ p.finish }}</div>
+      </div>
+      <span class="bv {% if p.stock_status == 'ok' %}bg{% elif p.stock_status == 'low' %}ba{% elif p.stock_status == 'critical' %}br{% else %}br{% endif %}">{{ p.stock_status|title }}</span>
+    </div>
+    <div class="mr"><span class="mrk">Stock</span><span class="mrv" style="font-size:16px;font-weight:700;{% if p.stock_status in 'critical,out' %}color:#b33a36;{% elif p.stock_status == 'low' %}color:#a06a10;{% endif %}">{{ p.stock_qty|floatformat:0 }} sqft</span></div>
+    <div class="mr"><span class="mrk">Avg Cost</span><span class="mrv">₹{{ p.avg_cost|floatformat:2 }}/sqft</span></div>
+    <div class="mr"><span class="mrk">Sale Rate</span><span class="mrv" style="color:var(--wood-600);">₹{{ p.sale_rate|floatformat:2 }}/sqft</span></div>
+    <div class="mr"><span class="mrk">Stock Value</span><span class="mrv" style="font-weight:600;">₹{{ p.stock_value|floatformat:0 }}</span></div>
+    {% if p.days_left is not None %}<div class="mr"><span class="mrk">Days of Stock</span><span class="mrv">{{ p.days_left|floatformat:0 }} days ({{ p.avg_daily }} sqft/day)</span></div>{% endif %}
+  </div>
+  {% endfor %}
+  </div>
+
+</div>
+{% endblock %}

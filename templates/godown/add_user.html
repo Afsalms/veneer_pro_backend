@@ -1,0 +1,51 @@
+{% extends "godown/base.html" %}
+{% block title %}{% if target %}Edit User{% else %}Add User{% endif %}{% endblock %}
+{% block page_title %}{% if target %}Edit User{% else %}Add User{% endif %}{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'user_list' %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">{% if target %}Edit User · {{ target.username }}{% else %}Add New User{% endif %}</span>
+</div>
+<form method="post">{% csrf_token %}
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">Account Details</div>
+  {% if not target %}
+  <div class="frow">
+    <div class="fhalf"><label class="fl">Username *</label><input class="fc" name="username" required placeholder="Unique login name" autocomplete="off"></div>
+    <div class="fhalf"><label class="fl">Password *</label><input class="fc" name="password" type="password" required placeholder="Min 6 characters" autocomplete="new-password"></div>
+  </div>
+  {% else %}
+  <div class="frow">
+    <div class="fhalf"><label class="fl">Username</label><input class="fc" value="{{ target.username }}" disabled style="opacity:.6;cursor:not-allowed;"></div>
+    <div class="fhalf"><label class="fl">New Password</label><input class="fc" name="password" type="password" placeholder="Leave blank to keep current" autocomplete="new-password"></div>
+  </div>
+  {% endif %}
+  <div class="frow">
+    <div class="fhalf"><label class="fl">Full Name</label><input class="fc" name="full_name" value="{% if target %}{{ target.get_full_name }}{% endif %}" placeholder="Display name"></div>
+    <div class="fhalf"><label class="fl">Email</label><input class="fc" name="email" type="email" value="{% if target %}{{ target.email }}{% endif %}" placeholder="email@example.com"></div>
+  </div>
+  <div class="frow">
+    <div class="fhalf"><label class="fl">Phone</label><input class="fc" name="phone" value="{% if profile %}{{ profile.phone }}{% endif %}" placeholder="+91 00000 00000"></div>
+    <div class="fhalf"><label class="fl">Role *</label>
+      <select class="fc fsel" name="role">
+        <option value="limited" {% if profile and not profile.is_admin %}selected{% endif %}>Limited User</option>
+        <option value="admin" {% if profile and profile.is_admin %}selected{% endif %}>Admin</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- Role explanation -->
+<div class="cv" style="margin-bottom:14px;background:var(--body-bg);border-style:dashed;">
+  <div style="font-size:12px;color:var(--ts);line-height:2;">
+    <strong style="color:var(--wood-800);">Admin:</strong> Dashboard, Analytics, all operations, user management<br>
+    <strong style="color:#2a5aaa;">Limited User:</strong> Sales, Stock In, Customers, Suppliers, Products, Receivables, Payables, Expenses — no Dashboard/Analytics/Users
+  </div>
+</div>
+
+<div class="fp-actions">
+  <a class="bs" href="{% url 'user_list' %}">Cancel</a>
+  <button class="bw" type="submit"><i class="bi bi-check2"></i> {% if target %}Save Changes{% else %}Create User{% endif %}</button>
+</div>
+</form>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "godown/base.html" %}
+{% block title %}Settings{% endblock %}
+{% block page_title %}Godown Settings{% endblock %}
+{% block content %}
+<form method="post">{% csrf_token %}
+<div class="two-col">
+  <div>
+    <div class="cv" style="margin-bottom:14px;">
+      <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;"><i class="bi bi-building"></i> Business Details</div>
+      <div class="frow"><div class="ffull"><label class="fl">Firm / Godown Name *</label><input class="fc" name="firm_name" value="{{ godown_obj.firm_name }}" required></div></div>
+      <div class="frow"><div class="ffull"><label class="fl">Address (appears on invoices)</label><textarea class="fc" name="address" rows="3">{{ profile.address }}</textarea></div></div>
+      <div class="frow"><div class="fhalf"><label class="fl">Phone</label><input class="fc" name="phone" value="{{ godown_obj.phone }}" placeholder="+91 94470 00000"></div><div class="fhalf"><label class="fl">Email</label><input class="fc" name="email" type="email" value="{{ godown_obj.email }}" placeholder="godown@example.com"></div></div>
+    </div>
+    <div class="cv" style="margin-bottom:14px;">
+      <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;"><i class="bi bi-percent"></i> GST & Tax</div>
+      <div class="frow"><div class="fhalf"><label class="fl">GSTIN</label><input class="fc" name="gstin" value="{{ godown_obj.gstin }}" placeholder="32AABCG1234F1Z5" style="font-family:monospace;"></div><div class="fhalf"><label class="fl">State Code</label><input class="fc" name="state_code" value="{{ godown_obj.state_code }}" placeholder="32 (Kerala)"></div></div>
+      <div class="frow"><div class="fhalf"><label class="fl">GST Rate % (Face Veneer)</label><input class="fc" name="gst_rate" type="number" step="0.01" value="{{ godown_obj.gst_rate }}" placeholder="12"></div><div class="fhalf"><label class="fl">Invoice Prefix</label><input class="fc" name="invoice_prefix" value="{{ godown_obj.invoice_prefix }}" placeholder="INV"></div></div>
+      <div style="background:var(--body-bg);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--tm);">
+        <i class="bi bi-info-circle"></i> HSN code 4408 (face veneer) attracts 12% GST in India.<br>
+        Kerala-to-Kerala sales: CGST 6% + SGST 6% | Inter-state: IGST 12%
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="cv" style="margin-bottom:14px;">
+      <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;"><i class="bi bi-bank"></i> Bank Details (for invoices)</div>
+      <div class="frow"><div class="ffull"><label class="fl">Bank Name</label><input class="fc" name="bank_name" value="{{ godown_obj.bank_name }}" placeholder="Federal Bank / SBI etc."></div></div>
+      <div class="frow"><div class="fhalf"><label class="fl">Account Number</label><input class="fc" name="account_no" value="{{ godown_obj.account_no }}" placeholder="1234567890"></div><div class="fhalf"><label class="fl">IFSC Code</label><input class="fc" name="ifsc" value="{{ godown_obj.ifsc }}" placeholder="FDRL0001234"></div></div>
+      <div class="frow"><div class="ffull"><label class="fl">UPI ID</label><input class="fc" name="upi_id" value="{{ godown_obj.upi_id }}" placeholder="godown@upi"></div></div>
+    </div>
+    <div class="cv" style="margin-bottom:14px;">
+      <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;"><i class="bi bi-card-text"></i> Invoice Footer Note</div>
+      <textarea class="fc" name="invoice_note" rows="4">{{ profile.invoice_note }}</textarea>
+      <div style="font-size:11px;color:var(--tm);margin-top:6px;">This note appears at the bottom of every invoice.</div>
+    </div>
+  </div>
+</div>
+<div class="cv" style="margin-bottom:14px;border-color:var(--wood-200);background:var(--wood-100);">
+  <div class="ch" style="margin-bottom:8px;"><h6 style="color:var(--wood-800);">Dropdown Options</h6></div>
+  <div style="font-size:13px;color:var(--wood-600);margin-bottom:12px;line-height:1.6;">
+    Manage the dropdown choices for <strong>product thickness</strong>, <strong>cut type</strong>, <strong>finish</strong>,
+    <strong>expense categories</strong>, and <strong>landing expense categories</strong>. Add new values, deactivate old ones, set defaults.
+  </div>
+  <a class="bw" href="{% url 'lookup_list' %}" style="background:var(--wood-600);"><i class="bi bi-table"></i> Manage Lookup Tables</a>
+</div>
+<div class="fp-actions"><button class="bw" type="submit" style="padding:12px 30px;"><i class="bi bi-check2"></i> Save Settings</button></div>
+
+<!-- GSP / e-Invoice Settings -->
+<form method="post" style="margin-top:16px;">{% csrf_token %}
+<div class="cv">
+  <div class="ch">
+    <h6>🔌 GSP / e-Invoice Settings <span class="bv ba" style="font-size:10px;margin-left:6px;">Ready — Not Active</span></h6>
+    <span style="font-size:11px;color:var(--tm);">Configure when you're ready to go live with e-invoicing</span>
+  </div>
+  <div style="background:var(--body-bg);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--tm);margin-bottom:14px;line-height:1.7;">
+    <strong style="color:var(--ts);">What is this?</strong> GSP (GST Suvidha Provider) allows VeneerPro to auto-generate e-Invoices (IRN) and e-Way Bills directly from the software. 
+    All data fields are already captured in every invoice. You just need to connect a GSP like <strong>Masters India</strong> or <strong>IRIS Business</strong> and add your credentials below.
+    This feature will go live once you integrate with your GSP — no changes needed in how you create invoices.
+  </div>
+  <div class="frow">
+    <div class="fhalf"><label class="fl">PAN Number</label><input class="fc" name="pan_number" value="{{ godown_obj.pan_number }}" placeholder="AABCG1234F" style="font-family:monospace;"></div>
+    <div class="fhalf"><label class="fl">CIN (if company)</label><input class="fc" name="cin_number" value="{{ godown_obj.cin_number }}" placeholder="U51909KL2020PTC000000"></div>
+  </div>
+  <div style="font-size:11px;font-weight:600;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 8px;">GSP API Credentials</div>
+  <div class="frow">
+    <div class="fthird"><label class="fl">GSP Username</label><input class="fc" name="gsp_username" value="{{ godown_obj.gsp_username }}" placeholder="API username from GSP"></div>
+    <div class="fthird"><label class="fl">Client ID</label><input class="fc" name="gsp_client_id" value="{{ godown_obj.gsp_client_id }}" placeholder="Client ID"></div>
+    <div class="fthird"><label class="fl">Client Secret</label><input class="fc" name="gsp_client_secret" type="password" placeholder="Leave blank to keep current"></div>
+  </div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Mode</label>
+      <select class="fc fsel" name="gsp_sandbox">
+        <option value="1" {% if godown_obj.gsp_sandbox %}selected{% endif %}>Sandbox (Testing)</option>
+        <option value="0" {% if not godown_obj.gsp_sandbox %}selected{% endif %}>Production (Live)</option>
+      </select>
+    </div>
+  </div>
+  <div class="fp-actions" style="margin-top:14px;">
+    <button class="bw" type="submit" name="save_gsp">Save GSP Settings</button>
+  </div>
+</div>
+</form>
+{% endblock %}

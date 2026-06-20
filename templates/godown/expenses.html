@@ -1,0 +1,87 @@
+{% extends "godown/base.html" %}
+{% block title %}Expenses{% endblock %}
+{% block page_title %}Expenses{% endblock %}
+{% block topbar_action %}<a class="bw" id="topbar-action" href="{% url 'add_expense' %}"><i class="bi bi-plus"></i> Add Expense</a>{% endblock %}
+{% block fab %}<a id="fab" class="fab-show" href="{% url 'add_expense' %}" style="display:flex;"><i class="bi bi-plus"></i></a>{% endblock %}
+{% block content %}
+<div class="sgrid cols-3">
+  <div class="sc"><div><div class="sl">This Month</div><div class="sv">₹{{ month_total|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">YTD Total</div><div class="sv">₹{{ ytd_total|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">Pending</div><div class="sv" style="color:#b33a36;">{{ pending_count }}</div><div class="sc-change" style="color:#b33a36;">₹{{ pending_amount|floatformat:0 }}</div></div></div>
+</div>
+
+{% if cat_totals %}
+<div class="cv" style="margin-bottom:14px;">
+  <div class="ch"><h6>This Month by Category</h6></div>
+  {% for cat, total in cat_totals.items %}
+  <div class="progress-row">
+    <div class="progress-row-head"><span>{{ cat }}</span><span style="font-weight:600;">₹{{ total|floatformat:0 }}</span></div>
+    <div class="pv"><div class="pf" style="width:{% widthratio total max_cat 100 %}%;background:var(--wood-400);"></div></div>
+  </div>{% endfor %}
+</div>{% endif %}
+
+<div class="cv">
+  <div class="ch"><h6>Expense Records</h6><a class="bw" href="{% url 'add_expense' %}"><i class="bi bi-plus"></i> Add</a></div>
+  <table class="tv dt">
+    <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Paid To</th><th>Amount</th><th>Mode</th><th>Status</th></tr></thead>
+    <tbody id="exp-tbody">
+    {% for e in expenses %}
+    <tr>
+      <td style="color:var(--tm);">{{ e.date }}</td>
+      <td><span class="chip">{{ e.get_category_display }}</span></td>
+      <td>{{ e.description }}</td>
+      <td style="color:var(--tm);">{{ e.paid_to }}</td>
+      <td style="font-weight:600;">₹{{ e.amount|floatformat:0 }}</td>
+      <td style="color:var(--tm);">{{ e.get_payment_mode_display }}</td>
+      <td><span class="bv {% if e.status == 'paid' %}bg{% else %}ba{% endif %}">{{ e.get_status_display }}</span></td>
+    </tr>{% empty %}
+    <tr><td colspan="7" style="text-align:center;color:var(--tm);padding:30px;">No expenses recorded yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="ml" id="exp-cards">
+  {% for e in expenses %}
+  <div class="mc">
+    <div class="mct"><div><div class="mcn">{{ e.description }}</div><div class="mcs">{{ e.date }} · {{ e.get_category_display }}</div></div><span class="bv {% if e.status == 'paid' %}bg{% else %}ba{% endif %}">{{ e.get_status_display }}</span></div>
+    <div class="mr"><span class="mrk">Paid To</span><span class="mrv">{{ e.paid_to }}</span></div>
+    <div class="mr"><span class="mrk">Amount</span><span class="mrv" style="font-weight:700;">₹{{ e.amount|floatformat:0 }}</span></div>
+  </div>{% endfor %}
+  </div>
+  {% if has_more %}
+  <div class="scroll-sentinel" id="exp-sentinel"></div>
+  <div class="scroll-loader" id="exp-loader"><span class="scroll-loader-dot"></span><span class="scroll-loader-dot"></span><span class="scroll-loader-dot"></span></div>
+  {% endif %}
+  <div class="scroll-end" id="exp-end">All expense records loaded</div>
+</div>
+{% endblock %}
+{% block extra_js %}
+{% if has_more %}
+<script>
+function renderExpRow(e) {
+  const badge = e.status==='paid'?'bg':'ba';
+  return `<tr>
+    <td style="color:var(--tm);">${e.date}</td>
+    <td><span class="chip">${e.category}</span></td>
+    <td>${e.description}</td><td style="color:var(--tm);">${e.paid_to}</td>
+    <td style="font-weight:600;">₹${Math.round(e.amount).toLocaleString('en-IN')}</td>
+    <td style="color:var(--tm);">${e.payment_mode}</td>
+    <td><span class="bv ${badge}">${e.status_display}</span></td>
+  </tr>`;
+}
+function renderExpCard(e) {
+  const badge = e.status==='paid'?'bg':'ba';
+  return `<div class="mc">
+    <div class="mct"><div><div class="mcn">${e.description}</div><div class="mcs">${e.date} · ${e.category}</div></div><span class="bv ${badge}">${e.status_display}</span></div>
+    <div class="mr"><span class="mrk">Paid To</span><span class="mrv">${e.paid_to}</span></div>
+    <div class="mr"><span class="mrk">Amount</span><span class="mrv" style="font-weight:700;">₹${Math.round(e.amount).toLocaleString('en-IN')}</span></div>
+  </div>`;
+}
+initInfiniteScroll({
+  tableBody:'#exp-tbody', mobileList:'#exp-cards',
+  fetchUrl:'{% url "expenses" %}',
+  renderRow:renderExpRow, renderCard:renderExpCard,
+  sentinel:'#exp-sentinel', loader:'#exp-loader', endMsg:'#exp-end',
+});
+</script>
+{% endif %}
+{% endblock %}

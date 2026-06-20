@@ -1,0 +1,176 @@
+{% extends "godown/base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block topbar_action %}<a class="bw" id="topbar-action" href="{% url 'add_sale' %}"><i class="bi bi-plus"></i> New Sale</a>{% endblock %}
+{% block fab %}<a id="fab" class="fab-show" href="{% url 'add_sale' %}" style="display:flex;"><i class="bi bi-plus"></i></a>{% endblock %}
+{% block extra_head %}<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>{% endblock %}
+{% block content %}
+
+{% include "godown/range_picker.html" %}
+
+<!-- KPI Stats — receivable/payable are always live, others scoped to range -->
+<div class="sgrid">
+  <div class="sc"><div><div class="sl">Stock Value</div><div class="sv">₹{{ stock_value|floatformat:0 }}</div><div class="sc-change" style="color:var(--tm);">At avg cost · live</div></div><div class="si iw"><i class="bi bi-layers-half"></i></div></div>
+  <div class="sc"><div>
+    <div class="sl">Revenue <span style="font-weight:400;font-size:10px;">{{ range_label }}</span></div>
+    <div class="sv">₹{{ sales_total|floatformat:0 }}</div>
+    {% if rev_delta_pct is not None %}
+    <div class="sc-change" style="color:{% if rev_delta_pct >= 0 %}#2d6a27{% else %}#b33a36{% endif %};">
+      <i class="bi bi-arrow-{% if rev_delta_pct >= 0 %}up{% else %}down{% endif %}-short"></i>
+      {{ rev_delta_pct }}% vs prev period
+    </div>
+    {% endif %}
+  </div><div class="si ig"><i class="bi bi-graph-up"></i></div></div>
+  <div class="sc"><div><div class="sl">Receivable</div><div class="sv">₹{{ total_receivable|floatformat:0 }}</div><div class="sc-change" style="color:var(--tm);">All outstanding · live</div></div><div class="si ib"><i class="bi bi-wallet2"></i></div></div>
+  <div class="sc"><div><div class="sl">Payable</div><div class="sv">₹{{ total_payable|floatformat:0 }}</div>{% if overdue_payables %}<div class="sc-change" style="color:#b33a36;"><i class="bi bi-exclamation-circle"></i> {{ overdue_payables }} pending</div>{% endif %}</div><div class="si ir"><i class="bi bi-credit-card"></i></div></div>
+</div>
+
+<!-- P&L for selected range -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+  <div class="sc"><div><div class="sl">Revenue</div><div class="sv" style="color:#2d6a27;">₹{{ range_revenue|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">Cost of Goods</div><div class="sv" style="color:#b33a36;">₹{{ range_cogs|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">Overheads</div><div class="sv" style="color:#b33a36;">₹{{ range_expenses|floatformat:0 }}</div></div></div>
+  <div class="sc"><div>
+    <div class="sl">Net Profit</div>
+    <div class="sv" style="color:{% if range_profit >= 0 %}#2d6a27{% else %}#b33a36{% endif %};">
+      {% if range_profit < 0 %}–{% endif %}₹{{ range_profit|floatformat:0 }}
+    </div>
+    {% if range_revenue > 0 %}
+    <div class="sc-change" style="color:var(--tm);">
+      {% widthratio range_profit range_revenue 100 %}% margin
+    </div>
+    {% endif %}
+  </div></div>
+</div>
+
+<!-- GST for selected range -->
+<div class="cv" style="margin-bottom:16px;border-color:var(--wood-200);background:linear-gradient(135deg,#fefdf9 0%,#fdf8ec 100%);">
+  <div class="ch">
+    <div>
+      <h6 style="color:var(--wood-800);"><i class="bi bi-percent" style="margin-right:6px;"></i>GST — {{ range_label }}</h6>
+      <div style="font-size:11px;color:var(--tm);margin-top:3px;">HSN 4408 · {{ gst_rate }}% GST on face veneer</div>
+    </div>
+    <a class="bs" href="{% url 'gst_report' %}" style="font-size:11px;"><i class="bi bi-download"></i> Full Report</a>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <div style="width:32px;height:32px;border-radius:8px;background:#eaf5e8;display:flex;align-items:center;justify-content:center;font-size:15px;">📥</div>
+        <div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--tm);font-weight:600;">GST Collected</div><div style="font-size:10px;color:var(--tm);">From customers</div></div>
+      </div>
+      <div style="font-size:22px;font-weight:700;color:#2d6a27;font-family:'Fraunces',serif;">₹{{ gst_collected|floatformat:0 }}</div>
+      <div style="font-size:11px;color:var(--tm);margin-top:4px;">On ₹{{ sales_total|floatformat:0 }} taxable sales</div>
+    </div>
+    <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <div style="width:32px;height:32px;border-radius:8px;background:#e8f0fd;display:flex;align-items:center;justify-content:center;font-size:15px;">🔄</div>
+        <div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--tm);font-weight:600;">Input Tax Credit</div><div style="font-size:10px;color:var(--tm);">GST paid on purchases</div></div>
+      </div>
+      <div style="font-size:22px;font-weight:700;color:#2a5aaa;font-family:'Fraunces',serif;">₹{{ itc_this_month|floatformat:0 }}</div>
+      <div style="font-size:11px;color:var(--tm);margin-top:4px;">Claimable from govt</div>
+    </div>
+    <div style="background:#fff;border:1px solid {% if net_gst_payable > 0 %}#f5c6cb{% else %}#c3e6cb{% endif %};border-radius:10px;padding:14px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <div style="width:32px;height:32px;border-radius:8px;background:{% if net_gst_payable > 0 %}#fdecea{% else %}#eaf5e8{% endif %};display:flex;align-items:center;justify-content:center;font-size:15px;">🏛️</div>
+        <div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--tm);font-weight:600;">Net Payable to Govt</div><div style="font-size:10px;color:var(--tm);">Collected − ITC</div></div>
+      </div>
+      <div style="font-size:22px;font-weight:700;color:{% if net_gst_payable > 0 %}#b33a36{% else %}#2d6a27{% endif %};font-family:'Fraunces',serif;">₹{{ net_gst_payable|floatformat:0 }}</div>
+      <div style="font-size:11px;color:var(--tm);margin-top:4px;">₹{{ gst_collected|floatformat:0 }} − ₹{{ itc_this_month|floatformat:0 }}</div>
+    </div>
+  </div>
+  <div style="margin-top:12px;padding:10px 14px;background:var(--wood-100);border-radius:8px;font-size:12px;color:var(--wood-800);line-height:1.7;">
+    <strong>GST tip:</strong> Buy Teak @ ₹32 → pay 12% = ₹3.84 ITC. Sell @ ₹45 → collect 12% = ₹5.40. Pay govt only ₹5.40 − ₹3.84 = <strong>₹1.56</strong> per sqft.
+  </div>
+</div>
+
+<div class="two-col right-heavy">
+  <!-- Low stock -->
+  <div class="cv">
+    <div class="ch"><h6><i class="bi bi-exclamation-triangle" style="color:#c49a3c;"></i> Low Stock</h6><span class="bv ba">{{ low_stock|length }} items</span></div>
+    {% for p in low_stock %}
+    <div class="progress-row">
+      <div class="progress-row-head"><span style="font-weight:500;">{{ p.display_name }}</span><span style="font-size:12px;color:var(--tm);">{{ p.stock_qty|floatformat:0 }}/{{ p.min_stock|floatformat:0 }} sqft</span></div>
+      <div class="pv"><div class="pf" style="width:{% widthratio p.stock_qty p.min_stock 100 %}%;background:{% if p.stock_status == 'critical' %}#c0392b{% else %}#e57c10{% endif %};"></div></div>
+    </div>
+    {% empty %}<p style="color:var(--tm);font-size:13px;">All products adequately stocked.</p>{% endfor %}
+  </div>
+
+  <!-- Recent sales -->
+  <div class="cv">
+    <div class="ch"><h6>Recent Sales</h6><a class="bs" href="{% url 'sales_list' %}">View All</a></div>
+    <table class="tv dt">
+      <thead><tr><th>Bill No</th><th>Customer</th><th>Taxable</th><th>GST</th><th>Total</th><th>Status</th></tr></thead>
+      <tbody>{% for s in recent_sales %}
+      <tr>
+        <td style="font-weight:500;color:var(--wood-600);">{{ s.bill_number }}</td>
+        <td>{{ s.customer.name }}</td>
+        <td>₹{{ s.total_amount|floatformat:0 }}</td>
+        <td style="color:var(--tm);font-size:12px;">+₹{{ s.gst_amount|floatformat:0 }}</td>
+        <td style="font-weight:600;">₹{{ s.grand_total|floatformat:0 }}</td>
+        <td><span class="bv {% if s.status == 'paid' %}bg{% elif s.status == 'partial' %}ba{% else %}br{% endif %}">{{ s.status|title }}</span></td>
+      </tr>
+      {% empty %}<tr><td colspan="6" style="color:var(--tm);text-align:center;padding:20px;">No sales in this period</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    <div class="ml">{% for s in recent_sales %}
+    <div class="mc"><div class="mct"><div><div class="mcn">{{ s.customer.name }}</div><div class="mcs">{{ s.bill_number }} · {{ s.date }}</div></div><span class="bv {% if s.status == 'paid' %}bg{% elif s.status == 'partial' %}ba{% else %}br{% endif %}">{{ s.status|title }}</span></div>
+    <div class="mr"><span class="mrk">Total</span><span class="mrv" style="color:var(--wood-600);font-weight:600;">₹{{ s.grand_total|floatformat:0 }}</span></div>
+    </div>{% endfor %}</div>
+  </div>
+</div>
+
+<!-- Upcoming PO + Payments due -->
+<div class="two-col">
+  <div class="cv">
+    <div class="ch"><h6><i class="bi bi-truck" style="color:var(--wood-400);"></i> Upcoming PO Arrivals</h6><a class="bs" href="{% url 'po_list' %}">All POs</a></div>
+    {% for po in upcoming_pos %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:var(--body-bg);border-radius:8px;{% if not forloop.first %}margin-top:8px;{% endif %}">
+      <div><div style="font-size:13px;font-weight:500;">{{ po.supplier.name }}</div><div style="font-size:11px;color:var(--tm);">{{ po.po_number }}</div></div>
+      <div style="text-align:right;"><div style="font-size:13px;font-weight:600;{% if po.days_to_arrival <= 2 %}color:#a06a10;{% endif %}">{% if po.days_to_arrival == 0 %}Today{% elif po.days_to_arrival == 1 %}Tomorrow{% else %}{{ po.days_to_arrival }}d{% endif %}</div><div style="font-size:11px;color:var(--tm);">₹{{ po.balance_on_arrival|floatformat:0 }}</div></div>
+    </div>
+    {% empty %}<p style="color:var(--tm);font-size:13px;">No upcoming arrivals.</p>{% endfor %}
+  </div>
+  <div class="cv">
+    <div class="ch"><h6>Payments Due · Next 7 Days</h6></div>
+    {% for s in due_sales %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:var(--body-bg);border-radius:8px;{% if not forloop.first %}margin-top:8px;{% endif %}">
+      <div><div style="font-size:13px;font-weight:500;">{{ s.customer.name }}</div><div style="font-size:11px;color:var(--tm);">{{ s.bill_number }} · Due {{ s.due_date }}</div></div>
+      <div style="font-size:14px;font-weight:600;color:#b33a36;">₹{{ s.balance|floatformat:0 }}</div>
+    </div>
+    {% empty %}<p style="color:var(--tm);font-size:13px;">No payments due this week.</p>{% endfor %}
+  </div>
+</div>
+
+<!-- P&L Chart -->
+<div class="cv">
+  <div class="ch">
+    <h6><i class="bi bi-bar-chart-line" style="color:var(--wood-400);"></i> Profit / Loss — {{ range_label }}</h6>
+  </div>
+  <div style="position:relative;height:240px;"><canvas id="plChart"></canvas></div>
+</div>
+
+{% endblock %}
+{% block extra_js %}
+<script>
+Chart.defaults.font.family = "'DM Sans',sans-serif";
+Chart.defaults.font.size   = 11;
+Chart.defaults.color       = '#9e8c75';
+
+const rangeParams = '?range={{ range }}{% if range == "custom" %}&from={{ date_from|date:"Y-m-d" }}&to={{ date_to|date:"Y-m-d" }}{% endif %}';
+
+fetch('{% url "profit_loss_data" %}' + rangeParams).then(r=>r.json()).then(d=>{
+  new Chart(document.getElementById('plChart').getContext('2d'),{
+    type:'bar',
+    data:{
+      labels:d.pl.map(r=>r.month),
+      datasets:[
+        {label:'Revenue',data:d.pl.map(r=>r.revenue),backgroundColor:'#c49a3c',borderRadius:3,barPercentage:.6,categoryPercentage:.7},
+        {label:'COGS',data:d.pl.map(r=>r.cogs),backgroundColor:'#e8dfd0',borderRadius:3,barPercentage:.6,categoryPercentage:.7},
+        {label:'Net Profit',data:d.pl.map(r=>r.net),type:'line',borderColor:'#2d6a27',backgroundColor:'rgba(45,106,39,.08)',borderWidth:2,pointBackgroundColor:'#2d6a27',pointRadius:4,tension:.3,fill:false},
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'top',align:'end',labels:{boxWidth:10,boxHeight:10,borderRadius:3,useBorderRadius:true,padding:12}},tooltip:{callbacks:{label:c=>' ₹'+c.parsed.y.toLocaleString('en-IN')}}},scales:{x:{grid:{display:false},border:{display:false}},y:{grid:{color:'#f0ebe3'},border:{display:false},ticks:{callback:v=>'₹'+(v>=1000?Math.round(v/1000)+'k':v)}}}}
+  });
+});
+</script>
+{% endblock %}

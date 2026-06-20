@@ -1,0 +1,122 @@
+{% extends "godown/base.html" %}
+{% block title %}Sales{% endblock %}
+{% block page_title %}Sales{% endblock %}
+{% block topbar_action %}<a class="bw" id="topbar-action" href="{% url 'add_sale' %}"><i class="bi bi-plus"></i> New Sale</a>{% endblock %}
+{% block fab %}<a id="fab" class="fab-show" href="{% url 'add_sale' %}" style="display:flex;"><i class="bi bi-plus"></i></a>{% endblock %}
+{% block content %}
+
+<div class="sgrid">
+  <div class="sc"><div><div class="sl">Today</div><div class="sv">₹{{ today_total|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">This Month</div><div class="sv">₹{{ month_total|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">Total Bills</div><div class="sv">{{ total_bills }}</div></div></div>
+  <div class="sc"><div><div class="sl">Avg Bill</div><div class="sv">₹{{ avg_bill|floatformat:0 }}</div></div></div>
+</div>
+
+<div class="cv">
+  <div class="ch">
+    <h6>Sales Records</h6>
+    <a class="bw" href="{% url 'add_sale' %}"><i class="bi bi-plus"></i> New Sale</a>
+  </div>
+
+  <!-- Desktop table -->
+  <table class="tv dt">
+    <thead>
+      <tr><th>Bill No</th><th>Date</th><th>Customer</th><th>Products</th><th>Taxable</th><th>GST</th><th>Total</th><th>Balance</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody id="sales-tbody">
+    {% for s in sales %}
+    <tr>
+      <td><a href="{% url 'sale_detail' s.pk %}" style="font-weight:500;color:var(--wood-600);">{{ s.bill_number }}</a></td>
+      <td style="color:var(--tm);">{{ s.date }}</td>
+      <td>{{ s.customer.name }}</td>
+      <td>{% for item in s.items.all %}<span class="chip">{{ item.product.display_name }}</span> {% endfor %}</td>
+      <td>₹{{ s.total_amount|floatformat:0 }}</td>
+      <td style="color:var(--tm);font-size:12px;">+₹{{ s.gst_amount|floatformat:0 }}</td>
+      <td style="font-weight:600;">₹{{ s.grand_total|floatformat:0 }}</td>
+      <td style="{% if s.balance > 0 %}color:#b33a36;font-weight:500;{% endif %}">₹{{ s.balance|floatformat:0 }}</td>
+      <td><span class="bv {% if s.status == 'paid' %}bg{% elif s.status == 'partial' %}ba{% else %}br{% endif %}">{{ s.status|title }}</span></td>
+      <td><a class="bs" href="{% url 'invoice' s.pk %}" title="Invoice"><i class="bi bi-printer"></i></a></td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="10" style="text-align:center;color:var(--tm);padding:30px;">No sales yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Mobile cards -->
+  <div class="ml" id="sales-cards">
+  {% for s in sales %}
+  <div class="mc">
+    <div class="mct">
+      <div><div class="mcn">{{ s.customer.name }}</div><div class="mcs">{{ s.bill_number }} · {{ s.date }}</div></div>
+      <span class="bv {% if s.status == 'paid' %}bg{% elif s.status == 'partial' %}ba{% else %}br{% endif %}">{{ s.status|title }}</span>
+    </div>
+    {% for item in s.items.all %}<div class="mr"><span class="mrk">{{ item.product.display_name }}</span><span class="mrv">{{ item.qty_sqft|floatformat:0 }} sqft</span></div>{% endfor %}
+    <div class="mr"><span class="mrk">Taxable</span><span class="mrv">₹{{ s.total_amount|floatformat:0 }}</span></div>
+    <div class="mr"><span class="mrk">GST {{ s.gst_rate }}%</span><span class="mrv">₹{{ s.gst_amount|floatformat:0 }}</span></div>
+    <div class="mr"><span class="mrk">Total</span><span class="mrv" style="font-weight:700;color:var(--wood-600);">₹{{ s.grand_total|floatformat:0 }}</span></div>
+    {% if s.balance > 0 %}<div class="mr"><span class="mrk">Balance</span><span class="mrv" style="color:#b33a36;">₹{{ s.balance|floatformat:0 }}</span></div>{% endif %}
+    <div style="margin-top:10px;display:flex;gap:8px;">
+      <a class="bs" href="{% url 'invoice' s.pk %}" style="flex:1;justify-content:center;font-size:12px;"><i class="bi bi-printer"></i> Invoice</a>
+      {% if s.balance > 0 %}<a class="bw" href="{% url 'record_sale_payment' s.pk %}" style="flex:1;justify-content:center;font-size:12px;">Collect Payment</a>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+
+  <!-- Infinite scroll triggers -->
+  {% if has_more %}
+  <div class="scroll-sentinel" id="sales-sentinel"></div>
+  <div class="scroll-loader" id="sales-loader"><span class="scroll-loader-dot"></span><span class="scroll-loader-dot"></span><span class="scroll-loader-dot"></span></div>
+  {% endif %}
+  <div class="scroll-end" id="sales-end" style="color:var(--tm);">All {{ total_bills }} sale{{ total_bills|pluralize }} loaded</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if has_more %}
+<script>
+function renderSaleRow(s) {
+  const chips   = s.products.map(p => `<span class="chip">${p}</span>`).join(' ');
+  const balStyle = s.balance > 0 ? 'color:#b33a36;font-weight:500;' : '';
+  const badge    = s.status==='paid' ? 'bg' : s.status==='partial' ? 'ba' : 'br';
+  const statusTxt = s.status.charAt(0).toUpperCase() + s.status.slice(1);
+  return `<tr>
+    <td style="font-weight:500;color:var(--wood-600);">${s.bill_number}</td>
+    <td style="color:var(--tm);">${s.date}</td>
+    <td>${s.customer}</td>
+    <td>${chips}</td>
+    <td>₹${Math.round(s.total_amount).toLocaleString('en-IN')}</td>
+    <td style="color:var(--tm);font-size:12px;">+₹${Math.round(s.gst_amount).toLocaleString('en-IN')}</td>
+    <td style="font-weight:600;">₹${Math.round(s.grand_total).toLocaleString('en-IN')}</td>
+    <td style="${balStyle}">₹${Math.round(s.balance).toLocaleString('en-IN')}</td>
+    <td><span class="bv ${badge}">${statusTxt}</span></td>
+    <td><a class="bs" href="${s.invoice_url}" title="Invoice"><i class="bi bi-printer"></i></a></td>
+  </tr>`;
+}
+function renderSaleCard(s) {
+  const badge = s.status==='paid' ? 'bg' : s.status==='partial' ? 'ba' : 'br';
+  const statusTxt = s.status.charAt(0).toUpperCase() + s.status.slice(1);
+  const prods = s.products.map(p => `<div class="mr"><span class="mrk">${p}</span><span class="mrv"></span></div>`).join('');
+  const balRow = s.balance > 0 ? `<div class="mr"><span class="mrk">Balance</span><span class="mrv" style="color:#b33a36;">₹${Math.round(s.balance).toLocaleString('en-IN')}</span></div>
+  <div style="margin-top:10px;"><a class="bw" href="${s.payment_url}" style="width:100%;justify-content:center;font-size:12px;">Collect Payment</a></div>` : '';
+  return `<div class="mc">
+    <div class="mct"><div><div class="mcn">${s.customer}</div><div class="mcs">${s.bill_number} · ${s.date}</div></div><span class="bv ${badge}">${statusTxt}</span></div>
+    ${prods}
+    <div class="mr"><span class="mrk">Total</span><span class="mrv" style="font-weight:700;color:var(--wood-600);">₹${Math.round(s.grand_total).toLocaleString('en-IN')}</span></div>
+    ${balRow}
+  </div>`;
+}
+initInfiniteScroll({
+  tableBody:  '#sales-tbody',
+  mobileList: '#sales-cards',
+  fetchUrl:   '{% url "sales_list" %}',
+  renderRow:  renderSaleRow,
+  renderCard: renderSaleCard,
+  sentinel:   '#sales-sentinel',
+  loader:     '#sales-loader',
+  endMsg:     '#sales-end',
+});
+</script>
+{% endif %}
+{% endblock %}

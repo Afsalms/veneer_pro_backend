@@ -1,0 +1,179 @@
+{% extends "godown/base.html" %}
+{% block title %}New Estimation{% endblock %}
+{% block page_title %}New Estimation{% endblock %}
+{% block content %}
+<div class="fp-header"><a class="fp-back" href="{% url 'estimations' %}"><i class="bi bi-arrow-left"></i></a><span class="fp-title">New Estimation / Quotation</span></div>
+<form method="post" id="est-form" novalidate>{% csrf_token %}
+
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">Customer Details</div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Customer (from records)</label>
+      <select class="fc fsel" name="customer" id="cust-sel">
+        <option value="">— Walk-in / Type name below —</option>
+        {% for c in customers %}<option value="{{ c.pk }}" data-phone="{{ c.phone }}">{{ c.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="fhalf">
+      <label class="fl">Or Type Customer Name</label>
+      <input class="fc" name="customer_name" id="cust-name" placeholder="Customer name for this quote">
+    </div>
+  </div>
+  <div class="frow">
+    <div class="fhalf"><label class="fl">Customer Phone</label><input class="fc" name="customer_phone" id="cust-phone" placeholder="+91 00000 00000"></div>
+    <div class="fhalf"></div>
+  </div>
+</div>
+
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">Estimation Details</div>
+  <div class="frow">
+    <div class="fhalf"><label class="fl">Date *</label><input class="fc" name="date" type="date" required value="{% now 'Y-m-d' %}"></div>
+    <div class="fhalf"><label class="fl">Valid Until</label><input class="fc" name="valid_until" type="date"></div>
+  </div>
+  <div class="frow">
+    <div class="fhalf" style="display:flex;align-items:center;gap:10px;padding-top:24px;">
+      <input type="checkbox" name="include_gst" id="incl-gst" checked style="width:18px;height:18px;accent-color:var(--wood-600);cursor:pointer;">
+      <label for="incl-gst" style="font-size:13px;cursor:pointer;">Include GST ({{ godown.gst_rate }}%) in total</label>
+    </div>
+    <div class="fhalf"></div>
+  </div>
+  <div class="frow"><div class="ffull"><label class="fl">Notes / Terms</label><textarea class="fc" name="notes" placeholder="e.g. Subject to stock availability. Prices valid for 7 days."></textarea></div></div>
+</div>
+
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <span style="font-size:13px;font-weight:600;color:var(--ts);">Items</span>
+      <div style="font-size:11px;color:var(--tm);margin-top:2px;">Add products with qty and rate. Sales always in sqft.</div>
+    </div>
+    <button type="button" class="add-item-btn" id="add-est-item"><i class="bi bi-plus"></i> Add Item</button>
+  </div>
+  <div id="est-items"></div>
+  <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;"><span style="color:var(--tm);">Subtotal</span><span id="est-subtotal" style="font-weight:600;">₹0</span></div>
+    <div id="gst-row" style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;"><span style="color:var(--tm);">GST {{ godown.gst_rate }}%</span><span id="est-gst" style="color:var(--ts);">₹0</span></div>
+    <div style="display:flex;justify-content:space-between;"><span style="font-size:14px;font-weight:700;">Total</span><span id="est-total" style="font-size:20px;font-weight:700;font-family:'Fraunces',serif;color:var(--wood-800);">₹0</span></div>
+  </div>
+</div>
+
+<div class="fp-actions"><a class="bs" href="{% url 'estimations' %}">Cancel</a><button class="bw" type="submit"><i class="bi bi-check2"></i> Save Estimation</button></div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery-validation@1.19.5/dist/jquery.validate.min.js"></script>
+<script>
+const GST_RATE = {{ godown.gst_rate }};
+const PRODUCTS = [{% for p in products %}{id:{{ p.pk }},name:"{{ p }}",sl:{{ p.sheet_length }},sw:{{ p.sheet_width }},rate:{{ p.sale_rate }}},{% endfor %}];
+let estCount = 0;
+
+function estItemHTML(n) {
+  const opts = PRODUCTS.map(p => `<option value="${p.id}" data-rate="${p.rate}">${p.name}</option>`).join('');
+  return `<div class="line-item" style="margin-bottom:10px;">
+    <div class="li-num" style="margin-top:30px;">${n}</div>
+    <div style="flex:1;min-width:0;">
+      <div class="frow">
+        <div class="fhalf"><label class="fl">Product</label>
+          <select class="fc fsel" name="product[]" onchange="onEstProductChange(this)">
+            <option value="">Select product</option>${opts}
+          </select>
+        </div>
+        <div class="fhalf"><label class="fl">Description (if no product)</label>
+          <input class="fc" name="description[]" placeholder="e.g. Teak 0.6mm Flat Cut">
+        </div>
+      </div>
+      <div class="frow">
+        <div class="fthird"><label class="fl">Qty (sqft) *</label><input class="fc" name="qty_sqft[]" type="number" step="0.01" min="0.01" placeholder="0" oninput="calcEstLine(this)" required></div>
+        <div class="fthird"><label class="fl">Rate (₹/sqft) *</label><input class="fc" name="rate_per_sqft[]" type="number" step="0.01" min="0.01" placeholder="0" oninput="calcEstLine(this)" required></div>
+        <div class="fthird"><label class="fl">Amount (₹)</label><input class="fc est-amt" readonly placeholder="auto" style="background:#f0ebe3;font-weight:600;"></div>
+      </div>
+    </div>
+    <button type="button" class="li-del" onclick="removeEstItem(this)" style="display:none;margin-top:28px;"><i class="bi bi-trash3"></i></button>
+  </div>`;
+}
+
+function addEstItem() {
+  estCount++;
+  document.getElementById('est-items').insertAdjacentHTML('beforeend', estItemHTML(estCount));
+  if (estCount > 1) document.querySelectorAll('#est-items .li-del').forEach(b => b.style.display='flex');
+}
+
+function removeEstItem(btn) {
+  btn.closest('.line-item').remove();
+  const items = document.querySelectorAll('#est-items .line-item');
+  items.forEach((item, i) => { const num = item.querySelector('.li-num'); if(num) num.textContent = i+1; });
+  if (items.length === 1) items[0].querySelector('.li-del').style.display = 'none';
+  calcEstTotal();
+}
+
+function onEstProductChange(sel) {
+  const li = sel.closest('.line-item');
+  const opt = sel.options[sel.selectedIndex];
+  if (opt && opt.dataset.rate) {
+    const rateEl = li.querySelector('[name="rate_per_sqft[]"]');
+    if (rateEl && !rateEl.value) rateEl.value = opt.dataset.rate;
+  }
+  calcEstLine(sel);
+}
+
+function calcEstLine(inp) {
+  const li = inp.closest('.line-item');
+  const qty  = parseFloat(li.querySelector('[name="qty_sqft[]"]')?.value) || 0;
+  const rate = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;
+  const amt  = qty * rate;
+  const amtEl = li.querySelector('.est-amt');
+  if (amtEl) amtEl.value = amt > 0 ? amt.toLocaleString('en-IN',{maximumFractionDigits:2}) : '';
+  calcEstTotal();
+}
+
+function calcEstTotal() {
+  let sub = 0;
+  document.querySelectorAll('.est-amt').forEach(a => { sub += parseFloat((a.value||'0').replace(/,/g,''))||0; });
+  const inclGST = document.getElementById('incl-gst').checked;
+  const gst = inclGST ? sub * GST_RATE / 100 : 0;
+  const total = sub + gst;
+  document.getElementById('est-subtotal').textContent = '₹'+sub.toLocaleString('en-IN',{maximumFractionDigits:0});
+  document.getElementById('est-gst').textContent = '₹'+gst.toLocaleString('en-IN',{maximumFractionDigits:0});
+  document.getElementById('est-total').textContent = '₹'+total.toLocaleString('en-IN',{maximumFractionDigits:0});
+  document.getElementById('gst-row').style.display = inclGST ? 'flex' : 'none';
+}
+
+document.getElementById('add-est-item').onclick = addEstItem;
+document.getElementById('incl-gst').addEventListener('change', calcEstTotal);
+
+// Auto-fill phone when customer selected
+document.getElementById('cust-sel').addEventListener('change', function() {
+  const opt = this.options[this.selectedIndex];
+  if (opt && opt.dataset.phone) document.getElementById('cust-phone').value = opt.dataset.phone;
+  if (this.value) document.getElementById('cust-name').value = '';
+});
+
+addEstItem(); addEstItem();
+
+$(function(){
+  $('#est-form').validate({
+    errorClass:'field-error', errorElement:'div',
+    errorPlacement:function(e,el){e.css({'color':'#b33a36','font-size':'11px','margin-top':'3px'});e.insertAfter(el);},
+    highlight:function(el){$(el).css('border-color','#b33a36');},
+    unhighlight:function(el){$(el).css('border-color','');},
+    submitHandler:function(form){
+      let valid=false;
+      document.querySelectorAll('#est-items .line-item').forEach(li=>{
+        const qty=parseFloat(li.querySelector('[name="qty_sqft[]"]')?.value)||0;
+        const rate=parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value)||0;
+        if(qty>0&&rate>0)valid=true;
+      });
+      if(!valid){vp.alert('Please add at least one item with quantity and rate.','Missing Items','warning');return false;}
+      // Require either dropdown or name
+      const custId=document.getElementById('cust-sel').value;
+      const custName=document.getElementById('cust-name').value.trim();
+      if(!custId&&!custName){vp.alert('Please select a customer or enter a customer name.','Customer Required','warning');return false;}
+      form.submit();
+    }
+  });
+});
+</script>
+{% endblock %}

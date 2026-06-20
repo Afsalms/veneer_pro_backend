@@ -1,0 +1,180 @@
+{% extends "godown/base.html" %}
+{% block title %}GRN-wise Profit{% endblock %}
+{% block page_title %}Load-wise (GRN) Profit & Loss{% endblock %}
+{% block content %}
+
+<!-- Summary strip -->
+<div class="sgrid" style="margin-bottom:16px;">
+  <div class="sc"><div><div class="sl">Total GRNs</div><div class="sv">{{ grn_reports|length }}</div></div><div class="si iw"><i class="bi bi-box-arrow-in-down"></i></div></div>
+  <div class="sc"><div><div class="sl">Fully Sold</div><div class="sv" style="color:#2d6a27;">{{ fully_sold_count }}</div><div class="sc-change" style="color:var(--tm);">of {{ grn_reports|length }} GRNs</div></div><div class="si ig"><i class="bi bi-check-circle"></i></div></div>
+  <div class="sc"><div><div class="sl">Total Revenue</div><div class="sv">₹{{ total_revenue|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">Total Profit</div><div class="sv" style="color:{% if total_profit >= 0 %}#2d6a27{% else %}#b33a36{% endif %};">₹{{ total_profit|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">Overall Dispatched</div><div class="sv">{{ overall_pct }}%</div></div></div>
+</div>
+
+{% for report in grn_reports %}
+<!-- ── GRN CARD ── -->
+<div class="cv" style="margin-bottom:20px;">
+
+  <!-- GRN Header -->
+  <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:42px;height:42px;border-radius:10px;background:var(--wood-100);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="bi bi-box-arrow-in-down" style="font-size:20px;color:var(--wood-600);"></i></div>
+      <div>
+        <div style="font-size:16px;font-weight:700;font-family:'Fraunces',serif;color:var(--wood-800);">{{ report.grn.grn_number }}</div>
+        <div style="font-size:12px;color:var(--tm);">{{ report.grn.supplier.name }} · {{ report.grn.date }}</div>
+      </div>
+    </div>
+
+    <!-- GRN summary numbers -->
+    <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:center;">
+      <div style="text-align:right;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--tm);margin-bottom:2px;">Landed Cost</div>
+        <div style="font-size:15px;font-weight:600;color:var(--ts);">₹{{ report.total_cost|floatformat:0 }}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--tm);margin-bottom:2px;">Revenue So Far</div>
+        <div style="font-size:15px;font-weight:600;color:#2d6a27;">₹{{ report.total_revenue|floatformat:0 }}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--tm);margin-bottom:2px;">Profit / Loss</div>
+        <div style="font-size:16px;font-weight:700;color:{% if report.profit >= 0 %}#2d6a27{% else %}#b33a36{% endif %};">
+          {% if report.profit < 0 %}–{% endif %}₹{{ report.profit|floatformat:0 }}
+          <span style="font-size:12px;font-weight:500;">({{ report.margin }}%)</span>
+        </div>
+      </div>
+      <!-- Sold bar -->
+      <div style="min-width:80px;text-align:right;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--tm);margin-bottom:4px;">Qty Sold</div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:4px;">{{ report.total_sold|floatformat:0 }} / {{ report.total_qty|floatformat:0 }} sqft</div>
+        <div class="pv" style="height:8px;border-radius:5px;">
+          <div class="pf" style="width:{{ report.pct_sold }}%;background:{% if report.pct_sold == 100 %}#2d6a27{% else %}var(--wood-400){% endif %};"></div>
+        </div>
+        <div style="font-size:10px;color:var(--tm);margin-top:2px;">{{ report.pct_sold }}% dispatched</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Per-product breakdown -->
+  {% for item in report.items %}
+  <div style="margin-bottom:{% if not forloop.last %}16px{% else %}0{% endif %};{% if not forloop.first %}padding-top:16px;border-top:1px solid var(--border);{% endif %}">
+
+    <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="chip" style="font-size:12px;">{{ item.product.display_name }}</span>
+        <span class="bv {% if item.status == 'sold_out' %}bg{% elif item.status == 'partial' %}ba{% else %}bz{% endif %}" style="font-size:10px;">
+          {% if item.status == 'sold_out' %}Fully Sold{% elif item.status == 'partial' %}Partially Sold{% else %}Unsold{% endif %}
+        </span>
+      </div>
+      <div style="font-size:12px;color:var(--tm);">{{ item.grn_qty|floatformat:0 }} sqft received · {{ item.qty_sold|floatformat:0 }} sold · {{ item.qty_remaining|floatformat:0 }} remaining</div>
+    </div>
+
+    <!-- Cost vs Sale comparison -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:10px;">
+      <div style="background:var(--body-bg);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin-bottom:4px;">Buy Rate</div>
+        <div style="font-size:14px;font-weight:600;">₹{{ item.grn_rate }}/sqft</div>
+      </div>
+      <div style="background:#fef6e4;border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin-bottom:4px;">Landed Rate (incl. expenses)</div>
+        <div style="font-size:14px;font-weight:600;color:#a06a10;">₹{{ item.landed_rate|floatformat:2 }}/sqft</div>
+      </div>
+      <div style="background:#eaf5e8;border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin-bottom:4px;">Revenue Realised</div>
+        <div style="font-size:14px;font-weight:600;color:#2d6a27;">₹{{ item.revenue|floatformat:0 }}</div>
+      </div>
+      <div style="background:{% if item.profit >= 0 %}#eaf5e8{% else %}#fdecea{% endif %};border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin-bottom:4px;">Gross Profit (sold qty)</div>
+        <div style="font-size:14px;font-weight:700;color:{% if item.profit >= 0 %}#2d6a27{% else %}#b33a36{% endif %};">
+          {% if item.profit < 0 %}–{% endif %}₹{{ item.profit|floatformat:0 }}
+          {% if item.revenue > 0 %}<span style="font-size:11px;font-weight:500;">({{ item.margin }}%)</span>{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Sale-wise detail (collapsible on mobile) -->
+    {% if item.sales_detail %}
+    <details style="margin-top:6px;">
+      <summary style="font-size:12px;font-weight:600;color:var(--wood-600);cursor:pointer;padding:6px 0;list-style:none;display:flex;align-items:center;gap:6px;">
+        <i class="bi bi-chevron-right" style="font-size:10px;transition:transform .2s;" id="chevron-{{ forloop.parentloop.counter }}-{{ forloop.counter }}"></i>
+        {{ item.sales_detail|length }} sale bill{{ item.sales_detail|length|pluralize }} from this batch
+      </summary>
+      <div style="margin-top:8px;border-radius:8px;overflow:hidden;border:1px solid var(--border);">
+        <table class="tv">
+          <thead>
+            <tr>
+              <th>Bill No</th>
+              <th>Customer</th>
+              <th>Date</th>
+              <th>Qty (sqft)</th>
+              <th>Sale Rate</th>
+              <th>Revenue</th>
+              <th>COGS</th>
+              <th>Profit</th>
+              <th>Margin</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for sale in item.sales_detail %}
+          <tr>
+            <td style="font-weight:500;color:var(--wood-600);">{{ sale.bill_number }}</td>
+            <td>{{ sale.customer }}</td>
+            <td style="color:var(--tm);">{{ sale.date }}</td>
+            <td>{{ sale.qty|floatformat:0 }}</td>
+            <td>₹{{ sale.rate }}/sqft</td>
+            <td style="font-weight:500;color:#2d6a27;">₹{{ sale.revenue|floatformat:0 }}</td>
+            <td style="color:var(--tm);">₹{{ sale.cogs|floatformat:0 }}</td>
+            <td style="font-weight:600;color:{% if sale.profit >= 0 %}#2d6a27{% else %}#b33a36{% endif %};">
+              {% if sale.profit < 0 %}–{% endif %}₹{{ sale.profit|floatformat:0 }}
+            </td>
+            <td style="font-weight:500;color:{% if sale.profit >= 0 %}#2d6a27{% else %}#b33a36{% endif %};">
+              {% if sale.revenue > 0 %}{% widthratio sale.profit sale.revenue 100 %}%{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endif %}
+
+  </div>
+  {% endfor %}
+
+  <!-- Landing expenses breakdown -->
+  {% if report.landing_expenses %}
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--tm);margin-bottom:8px;">Landing Expenses (included in landed rate above)</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      {% for exp in report.landing_expenses %}
+      <div style="background:var(--body-bg);border-radius:7px;padding:6px 12px;font-size:12px;">
+        <span style="color:var(--tm);">{{ exp.get_category_display }}:</span>
+        <span style="font-weight:600;margin-left:4px;">₹{{ exp.amount|floatformat:0 }}</span>
+        {% if exp.paid_to %}<span style="color:var(--tm);"> · {{ exp.paid_to }}</span>{% endif %}
+      </div>
+      {% endfor %}
+      <div style="background:var(--wood-100);border-radius:7px;padding:6px 12px;font-size:12px;">
+        <span style="color:var(--wood-800);font-weight:600;">Total: ₹{{ report.landing_total|floatformat:0 }}</span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% empty %}
+<div class="cv" style="text-align:center;padding:40px;color:var(--tm);">
+  <i class="bi bi-box-arrow-in-down" style="font-size:36px;opacity:.3;display:block;margin-bottom:12px;"></i>
+  No GRN records yet. <a href="{% url 'add_stock_in' %}">Add your first stock entry</a>
+</div>
+{% endfor %}
+
+<script>
+// Chevron rotate on details open
+document.querySelectorAll('details').forEach(d => {
+  d.addEventListener('toggle', () => {
+    const chevron = d.querySelector('[id^="chevron"]');
+    if(chevron) chevron.style.transform = d.open ? 'rotate(90deg)' : 'rotate(0)';
+  });
+});
+</script>
+{% endblock %}

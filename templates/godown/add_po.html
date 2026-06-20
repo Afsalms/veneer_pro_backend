@@ -1,0 +1,222 @@
+{% extends "godown/base.html" %}
+{% block title %}New Purchase Order{% endblock %}
+{% block page_title %}New Purchase Order{% endblock %}
+{% block content %}
+<div class="fp-header"><a class="fp-back" href="{% url 'po_list' %}"><i class="bi bi-arrow-left"></i></a><span class="fp-title">New Purchase Order</span></div>
+<form method="post" id="po-form" novalidate>{% csrf_token %}
+
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">PO Details</div>
+  <div class="frow">
+    <div class="fhalf"><label class="fl">Supplier *</label>
+      <select class="fc fsel" name="supplier" id="po-supplier" required data-rule-required="true" data-msg-required="Please select a supplier">
+        <option value="">Select supplier</option>{% for s in suppliers %}<option value="{{ s.pk }}">{{ s.name }}</option>{% endfor %}
+      </select></div>
+    <div class="fhalf"><label class="fl">PO Date *</label>
+      <input class="fc" name="date" type="date" required value="{% now 'Y-m-d' %}">
+    </div>
+  </div>
+  <div class="frow">
+    <div class="fhalf"><label class="fl">Expected Arrival Date</label><input class="fc" name="expected_arrival" type="date"></div>
+    <div class="fhalf"><label class="fl">Notes</label><input class="fc" name="notes" placeholder="Optional"></div>
+  </div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Payment Currency</label>
+      <select class="fc fsel" name="currency" id="po-currency" onchange="onCurrencyChange()">
+        <option value="INR">₹ Indian Rupee (INR)</option>
+        <option value="USD">$ US Dollar (USD)</option>
+      </select>
+    </div>
+    <div class="fhalf" id="exchange-rate-row" style="display:none;">
+      <label class="fl">Exchange Rate (1 USD = ₹ ?)</label>
+      <input class="fc" name="advance_exchange_rate" id="po-exchange-rate" type="number" step="0.01" min="1" placeholder="e.g. 84.50" value="84.50">
+      <div style="font-size:11px;color:var(--tm);margin-top:3px;" id="rate-hint"></div>
+    </div>
+  </div>
+</div>
+
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <span style="font-size:13px;font-weight:600;color:var(--ts);">Items Ordered</span>
+      <div style="font-size:11px;color:var(--tm);margin-top:2px;">Switch between <strong>sqft</strong> or <strong>pieces</strong> — sqft auto-calculated. Rate is always per sqft.</div>
+    </div>
+    <button type="button" class="add-item-btn" id="add-po-item"><i class="bi bi-plus"></i> Add Item</button>
+  </div>
+  <div id="po-items"></div>
+  <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+    <span style="font-size:13px;color:var(--tm);">Total PO Value</span>
+    <span style="font-size:20px;font-weight:700;font-family:'Fraunces',serif;color:var(--wood-800);" id="po-total">₹0</span>
+  </div>
+</div>
+
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">Advance Payment <span style="font-weight:400;color:var(--tm);font-size:11px;">(optional)</span></div>
+  <div id="advance-currency-note" style="display:none;margin-bottom:10px;padding:8px 12px;background:#e8f0fd;border-radius:8px;font-size:12px;color:#2a5aaa;"></div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl" id="advance-label">Advance Amount (₹)</label>
+      <input class="fc" name="advance_paid" type="number" step="0.01" min="0" placeholder="0" id="po-advance" oninput="calcAdvanceINR()">
+    </div>
+    <div class="fhalf"><label class="fl">Payment Mode</label><select class="fc fsel" name="advance_mode"><option value="bank">Bank Transfer / NEFT</option><option value="upi">UPI</option><option value="cash">Cash</option><option value="cheque">Cheque</option></select></div>
+  </div>
+  <div id="advance-inr-display" style="display:none;padding:8px 12px;background:var(--wood-100);border-radius:8px;font-size:13px;color:var(--wood-800);margin-top:-4px;"></div>
+</div>
+
+<div class="fp-actions"><a class="bs" href="{% url 'po_list' %}">Cancel</a><button class="bw" type="submit" id="po-submit"><i class="bi bi-check2"></i> Create PO</button></div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+{% include "godown/unit_converter_js.html" %}
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery-validation@1.19.5/dist/jquery.validate.min.js"></script>
+<script>
+const PRODUCTS = [{% for p in products %}{id:{{ p.pk }},name:"{{ p }}",sl:{{ p.sheet_length }},sw:{{ p.sheet_width }}},{% endfor %}];
+let poCount = 0;
+
+function lineItemHTML(n) {
+  const opts = PRODUCTS.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  return `
+  <div class="line-item" style="margin-bottom:12px;align-items:flex-start;">
+    <div class="li-num" style="margin-top:30px;">${n}</div>
+    <div style="flex:1;min-width:0;">
+
+      <!-- Row 1: Product + Unit -->
+      <div class="frow">
+        <div class="fhalf">
+          <label class="fl">Product *</label>
+          <select class="fc fsel li-product" name="product[]" onchange="onProductChange(this)" required>
+            <option value="">Select product</option>${opts}
+          </select>
+          <div class="product-stock-info" style="font-size:11px;color:var(--tm);margin-top:3px;min-height:14px;"></div>
+        </div>
+        <div class="fhalf">
+          <label class="fl">Purchase Unit</label>
+          <select class="fc fsel unit-sel" onchange="onUnitChange(this)">
+            <option value="sqft">Square Feet (sqft)</option>
+            <option value="pcs">Pieces (nos)</option>
+          </select>
+          <input type="hidden" name="qty_unit[]" value="sqft">
+        </div>
+      </div>
+
+      <!-- Sqft mode -->
+      <div class="sqft-section frow">
+        <div class="ffull">
+          <label class="fl">Quantity (sqft) *</label>
+          <input class="fc sqft-input" type="number" step="0.01" min="0.01" placeholder="0.00" oninput="onSqftInput(this)">
+          <input type="hidden" name="qty_sqft[]" value="">
+        </div>
+      </div>
+
+      <!-- Pieces mode -->
+      <div class="pcs-section frow" style="display:none;">
+        <div class="fthird">
+          <label class="fl">Pieces *</label>
+          <input class="fc" name="pieces[]" type="number" step="1" min="1" placeholder="0" oninput="calcSqft(getLI(this))">
+        </div>
+        <div class="fthird">
+          <label class="fl">Length (ft)</label>
+          <input class="fc" name="sheet_length[]" type="number" step="0.01" min="0.01" placeholder="8" oninput="calcSqft(getLI(this))">
+        </div>
+        <div class="fthird">
+          <label class="fl">Width (ft)</label>
+          <input class="fc" name="sheet_width[]" type="number" step="0.01" min="0.01" placeholder="4" oninput="calcSqft(getLI(this))">
+        </div>
+      </div>
+      <!-- Pieces: show calculated sqft -->
+      <div class="pcs-section frow" style="display:none;">
+        <div class="ffull">
+          <label class="fl">= Calculated Sqft</label>
+          <div class="fc qty-calc" style="background:#f0ebe3;display:flex;align-items:center;min-height:42px;font-size:13px;padding:10px 12px;color:var(--tm);">Fill pieces and dimensions above</div>
+          <input type="hidden" name="qty_sqft[]" value="">
+        </div>
+      </div>
+
+      <!-- RATE — always visible regardless of unit -->
+      <div class="frow">
+        <div class="fhalf">
+          <label class="fl">Rate (₹ per sqft) *</label>
+          <input class="fc li-rate" name="rate_per_sqft[]" type="number" step="0.01" min="0.01" placeholder="0.00" oninput="calcLineAmount(getLI(this))" required>
+        </div>
+        <div class="fhalf">
+          <label class="fl">Line Amount (₹)</label>
+          <input class="fc li-amt" readonly placeholder="auto" style="background:#f0ebe3;font-weight:600;">
+        </div>
+      </div>
+    </div>
+    <button type="button" class="li-del" onclick="removeLI(this)" style="display:none;margin-top:28px;"><i class="bi bi-trash3"></i></button>
+  </div>`;
+}
+
+function addPOItem() {
+  poCount++;
+  document.getElementById('po-items').insertAdjacentHTML('beforeend', lineItemHTML(poCount));
+  if (poCount > 1) document.querySelectorAll('#po-items .li-del').forEach(b => b.style.display='flex');
+}
+
+document.getElementById('add-po-item').onclick = addPOItem;
+addPOItem(); addPOItem();
+
+function onCurrencyChange() {
+  const cur = document.getElementById('po-currency').value;
+  const rateRow = document.getElementById('exchange-rate-row');
+  const advLabel = document.getElementById('advance-label');
+  const note = document.getElementById('advance-currency-note');
+  if (cur === 'USD') {
+    rateRow.style.display = '';
+    advLabel.textContent = 'Advance Amount (USD $)';
+    note.style.display = '';
+    note.textContent = 'Supplier is paid in USD. Enter advance in USD — INR equivalent calculated using the exchange rate above.';
+    calcAdvanceINR();
+  } else {
+    rateRow.style.display = 'none';
+    advLabel.textContent = 'Advance Amount (₹)';
+    note.style.display = 'none';
+    document.getElementById('advance-inr-display').style.display = 'none';
+  }
+}
+function calcAdvanceINR() {
+  const cur = document.getElementById('po-currency').value;
+  if (cur !== 'USD') return;
+  const usd  = parseFloat(document.getElementById('po-advance').value) || 0;
+  const rate = parseFloat(document.getElementById('po-exchange-rate').value) || 0;
+  const inr  = usd * rate;
+  const el   = document.getElementById('advance-inr-display');
+  const hint = document.getElementById('rate-hint');
+  if (usd > 0 && rate > 0) {
+    el.style.display = '';
+    el.innerHTML = `<strong>$${usd.toFixed(2)} × ₹${rate} = ₹${inr.toLocaleString('en-IN', {maximumFractionDigits:0})}</strong> will be recorded as INR equivalent`;
+    hint.textContent = `$1 = ₹${rate} today`;
+  }
+}
+document.getElementById('po-exchange-rate')?.addEventListener('input', calcAdvanceINR);
+// jQuery Validation
+$(function(){
+  $('#po-form').validate({
+    errorClass: 'field-error',
+    errorElement: 'div',
+    errorPlacement: function(error, element) {
+      error.css({'color':'#b33a36','font-size':'11px','margin-top':'3px'});
+      error.insertAfter(element);
+    },
+    highlight: function(element) { $(element).css('border-color','#b33a36'); },
+    unhighlight: function(element) { $(element).css('border-color',''); },
+    submitHandler: function(form) {
+      // Ensure at least one valid item
+      let valid = false;
+      document.querySelectorAll('#po-items .line-item').forEach(li => {
+        const pid  = li.querySelector('[name="product[]"]')?.value;
+        const qty  = parseFloat(li.querySelector('[name="qty_sqft[]"]')?.value) || 0;
+        const rate = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;
+        if (pid && qty > 0 && rate > 0) valid = true;
+      });
+      if (!valid) { vp.alert('Please add at least one item with product, quantity and rate.','Missing Items','warning'); return false; }
+      form.submit();
+    }
+  });
+});
+</script>
+{% endblock %}

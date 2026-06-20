@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>VeneerPro — Login</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Fraunces:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{--wood-100:#f5e8cc;--wood-200:#e8c98a;--wood-400:#c49a3c;--wood-600:#8b6914;--wood-800:#5a430a;--wood-900:#3a2a04;--body-bg:#f7f3ed;--card-bg:#fff;--border:#e8dfd0;--tp:#1e1a14;--ts:#6b5e48;--tm:#9e8c75;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',sans-serif;background:var(--body-bg);color:var(--tp);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.login-wrap{width:100%;max-width:420px;}
+.login-brand{text-align:center;margin-bottom:32px;}
+.login-brand-name{font-family:'Fraunces',serif;font-size:32px;color:var(--wood-800);display:block;margin-bottom:4px;}
+.login-brand-sub{font-size:13px;color:var(--tm);letter-spacing:.06em;}
+.login-card{background:var(--card-bg);border:1px solid var(--border);border-radius:16px;padding:32px;}
+.login-title{font-size:18px;font-weight:600;margin-bottom:24px;color:var(--tp);}
+.fl{font-size:11px;font-weight:600;color:var(--ts);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block;}
+.fc{width:100%;background:var(--body-bg);border:1px solid var(--border);border-radius:8px;padding:11px 14px;font-size:15px;color:var(--tp);font-family:'DM Sans',sans-serif;outline:none;transition:border-color .15s;}
+.fc:focus{border-color:var(--wood-400);background:#fff;}
+.fgroup{margin-bottom:18px;}
+.pw-wrap{position:relative;}
+.pw-wrap .fc{padding-right:44px;}
+.pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--tm);cursor:pointer;font-size:16px;padding:4px;}
+.login-btn{width:100%;background:var(--wood-800);color:var(--wood-100);border:none;border-radius:8px;padding:13px;font-size:15px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s;margin-top:8px;}
+.login-btn:hover{background:var(--wood-900);}
+.error-msg{background:#fdecea;color:#b33a36;border:1px solid #f5c6cb;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:18px;display:flex;align-items:center;gap:8px;}
+.login-footer{text-align:center;margin-top:20px;font-size:12px;color:var(--tm);}
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-brand">
+    <span class="login-brand-name">VeneerPro</span>
+    <span class="login-brand-sub">Godown Management System</span>
+  </div>
+  <div class="login-card">
+    <div class="login-title">Sign in to continue</div>
+    {% if error %}
+    <div class="error-msg"><i class="bi bi-exclamation-circle"></i>{{ error }}</div>
+    {% endif %}
+    <form method="post">
+      {% csrf_token %}
+      <div class="fgroup">
+        <label class="fl">Username</label>
+        <input class="fc" name="username" type="text" placeholder="Enter username" autofocus autocomplete="username" value="{{ request.POST.username|default:'' }}">
+      </div>
+      <div class="fgroup">
+        <label class="fl">Password</label>
+        <div class="pw-wrap">
+          <input class="fc" name="password" type="password" id="pw" placeholder="Enter password" autocomplete="current-password">
+          <button type="button" class="pw-toggle" onclick="togglePw()"><i class="bi bi-eye" id="pw-icon"></i></button>
+        </div>
+      </div>
+      <button class="login-btn" type="submit"><i class="bi bi-box-arrow-in-right"></i> Sign In</button>
+    </form>
+  </div>
+  <div class="login-footer">VeneerPro · Ernakulam, Kerala</div>
+</div>
+<script>
+function togglePw(){
+  const inp=document.getElementById('pw');
+  const ico=document.getElementById('pw-icon');
+  if(inp.type==='password'){inp.type='text';ico.className='bi bi-eye-slash';}
+  else{inp.type='password';ico.className='bi bi-eye';}
+}
+</script>
+</body>
+</html>

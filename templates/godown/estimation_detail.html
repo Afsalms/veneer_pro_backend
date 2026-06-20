@@ -1,0 +1,161 @@
+{% extends "godown/base.html" %}
+{% block title %}{{ est.est_number }}{% endblock %}
+{% block page_title %}Estimation{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'estimations' %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">{{ est.est_number }} — {{ est.display_name }}</span>
+  <div style="display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;">
+    {% if est.status != 'accepted' %}
+    <button class="bs" onclick="shareWhatsApp()" style="background:#25D366;color:#fff;border-color:#25D366;">
+      <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16" style="flex-shrink:0;"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232"/></svg>
+      Share on WhatsApp
+    </button>
+    {% endif %}
+    <button class="bs" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
+    {% if est.status == 'draft' or est.status == 'sent' %}
+    <a class="bw" href="{% url 'convert_to_sale' est.pk %}" onclick="return confirm('Convert this estimation to a sale bill?')"><i class="bi bi-arrow-right-circle"></i> Convert to Sale</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Status + Meta -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:center;justify-content:space-between;">
+    <div style="display:flex;flex-wrap:wrap;gap:20px;">
+      <div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Estimation No</div><div style="font-size:15px;font-weight:700;color:var(--wood-600);">{{ est.est_number }}</div></div>
+      <div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Customer</div><div style="font-size:15px;font-weight:600;">{{ est.display_name }}</div>{% if est.customer_phone or est.customer.phone %}<div style="font-size:12px;color:var(--tm);">{{ est.customer_phone|default:est.customer.phone }}</div>{% endif %}</div>
+      <div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Date</div><div style="font-weight:500;">{{ est.date }}</div></div>
+      {% if est.valid_until %}<div><div style="font-size:10px;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Valid Until</div><div style="font-weight:500;{% if est.days_valid is not None and est.days_valid < 0 %}color:#b33a36;{% endif %}">{{ est.valid_until }} {% if est.days_valid is not None %}<span style="font-size:11px;">({% if est.days_valid < 0 %}expired{% elif est.days_valid == 0 %}today{% else %}{{ est.days_valid }} days{% endif %})</span>{% endif %}</div></div>{% endif %}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span class="bv {% if est.status == 'accepted' %}bg{% elif est.status == 'expired' %}br{% elif est.status == 'sent' %}bb{% else %}bz{% endif %}" style="font-size:12px;padding:5px 14px;">{{ est.get_status_display }}</span>
+      <form method="post" style="display:inline;">{% csrf_token %}
+        <select class="fc fsel" name="status" onchange="this.form.submit()" style="width:auto;font-size:12px;padding:5px 28px 5px 8px;">
+          <option value="draft" {% if est.status == 'draft' %}selected{% endif %}>Draft</option>
+          <option value="sent" {% if est.status == 'sent' %}selected{% endif %}>Sent</option>
+          <option value="accepted" {% if est.status == 'accepted' %}selected{% endif %}>Accepted</option>
+          <option value="expired" {% if est.status == 'expired' %}selected{% endif %}>Expired</option>
+        </select>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Items -->
+<div class="cv" style="margin-bottom:14px;">
+  <div class="ch"><h6>Items</h6></div>
+  <table class="tv">
+    <thead><tr><th>#</th><th>Product / Description</th><th class="right">Qty (sqft)</th><th class="right">Rate (₹/sqft)</th><th class="right">Amount (₹)</th></tr></thead>
+    <tbody>
+    {% for item in est.est_items.all %}
+    <tr>
+      <td style="color:var(--tm);">{{ forloop.counter }}</td>
+      <td style="font-weight:500;">{{ item.display_desc }}{% if item.pieces %}<div style="font-size:11px;color:var(--tm);">{{ item.pieces|floatformat:0 }} pcs × {{ item.sheet_length }}×{{ item.sheet_width }} ft</div>{% endif %}</td>
+      <td style="text-align:right;">{{ item.qty_sqft|floatformat:2 }}</td>
+      <td style="text-align:right;">₹{{ item.rate_per_sqft }}</td>
+      <td style="text-align:right;font-weight:600;">₹{{ item.amount|floatformat:0 }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><td colspan="4" style="text-align:right;padding:10px 12px;color:var(--tm);">Subtotal</td><td style="text-align:right;padding:10px 12px;font-weight:600;">₹{{ est.subtotal|floatformat:0 }}</td></tr>
+      {% if est.include_gst %}
+      <tr><td colspan="4" style="text-align:right;padding:6px 12px;color:var(--tm);">GST {{ est.gst_rate }}%</td><td style="text-align:right;padding:6px 12px;color:var(--ts);">₹{{ est.gst_amount|floatformat:0 }}</td></tr>
+      {% endif %}
+      <tr style="background:var(--wood-100);"><td colspan="4" style="text-align:right;padding:12px;font-weight:700;font-size:15px;">TOTAL</td><td style="text-align:right;padding:12px;font-weight:700;font-size:16px;color:var(--wood-800);">₹{{ est.total|floatformat:0 }}</td></tr>
+    </tfoot>
+  </table>
+  {% if est.notes %}<div style="margin-top:12px;padding:10px 14px;background:var(--body-bg);border-radius:8px;font-size:12px;color:var(--ts);"><strong>Notes:</strong> {{ est.notes }}</div>{% endif %}
+</div>
+
+<!-- WhatsApp Preview -->
+<div class="cv" style="margin-bottom:14px;border-color:#c3e6cb;background:#f8fff8;">
+  <div class="ch"><h6 style="color:#2d6a27;"><svg width="16" height="16" fill="#2d6a27" viewBox="0 0 16 16" style="margin-right:6px;"><path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326z"/></svg>WhatsApp Message Preview</h6>
+    <button class="bs" onclick="copyWhatsApp()" style="font-size:12px;"><i class="bi bi-clipboard"></i> Copy Text</button>
+  </div>
+  <pre id="wa-preview" style="font-family:'DM Sans',sans-serif;font-size:12px;line-height:1.7;background:#e8f5e9;border-radius:8px;padding:14px;white-space:pre-wrap;word-break:break-word;color:#1a1a1a;border:1px solid #c3e6cb;"></pre>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Build the WhatsApp message text
+function buildWAText() {
+  const godownName = "{{ godown_obj.firm_name }}";
+  const godownPhone = "{{ godown_obj.phone }}";
+  const estNo = "{{ est.est_number }}";
+  const customer = "{{ est.display_name }}";
+  const date = "{{ est.date }}";
+  const validUntil = "{{ est.valid_until|default:'' }}";
+  const includeGST = {% if est.include_gst %}true{% else %}false{% endif %};
+  const gstRate = {{ est.gst_rate }};
+  const notes = "{{ est.notes|escapejs }}";
+
+  const items = [
+    {% for item in est.est_items.all %}
+    { desc: "{{ item.display_desc|escapejs }}", qty: {{ item.qty_sqft }}, rate: {{ item.rate_per_sqft }}, amount: {{ item.amount }} },
+    {% endfor %}
+  ];
+
+  const subtotal = {{ est.subtotal }};
+  const gstAmt   = {% if est.include_gst %}{{ est.gst_amount }}{% else %}0{% endif %};
+  const total    = {{ est.total }};
+
+  let msg = '';
+  msg += `*QUOTATION — ${estNo}*\n`;
+  msg += `${godownName}\n`;
+  msg += `Date: ${date}`;
+  if (validUntil) msg += ` | Valid till: ${validUntil}`;
+  msg += `\n`;
+  msg += `Customer: ${customer}\n`;
+  msg += `\n`;
+  msg += `*ITEMS:*\n`;
+  items.forEach((item, i) => {
+    msg += `${i+1}. ${item.desc} — ${parseFloat(item.qty).toFixed(2)} sqft @ ₹${item.rate}/sqft = *₹${Math.round(item.amount).toLocaleString('en-IN')}*\n`;
+  });
+  msg += `\n`;
+  msg += `Subtotal: ₹${Math.round(subtotal).toLocaleString('en-IN')}\n`;
+  if (includeGST && gstAmt > 0) {
+    msg += `GST ${gstRate}%: ₹${Math.round(gstAmt).toLocaleString('en-IN')}\n`;
+  }
+  msg += `*TOTAL: ₹${Math.round(total).toLocaleString('en-IN')}*\n`;
+  if (notes) {
+    msg += `\n_${notes}_\n`;
+  }
+  msg += `\n_${godownName}`;
+  if (godownPhone) msg += ` | ${godownPhone}`;
+  msg += `_`;
+  return msg;
+}
+
+// Show preview on load
+document.getElementById('wa-preview').textContent = buildWAText();
+
+function shareWhatsApp() {
+  const text = buildWAText();
+  const phone = "{{ est.customer_phone|default:est.customer.phone|default:'' }}".replace(/[^0-9]/g,'');
+  const encoded = encodeURIComponent(text);
+  const url = phone
+    ? `https://wa.me/91${phone.slice(-10)}?text=${encoded}`
+    : `https://wa.me/?text=${encoded}`;
+  window.open(url, '_blank');
+}
+
+async function copyWhatsApp() {
+  const text = buildWAText();
+  try {
+    await navigator.clipboard.writeText(text);
+    await vp.success('WhatsApp message copied to clipboard!');
+  } catch(e) {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+    await vp.success('Message copied!');
+  }
+}
+</script>
+{% endblock %}

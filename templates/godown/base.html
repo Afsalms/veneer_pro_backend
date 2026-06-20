@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>VeneerPro — {% block title %}Godown Management{% endblock %}</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Fraunces:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{--wood-100:#f5e8cc;--wood-200:#e8c98a;--wood-400:#c49a3c;--wood-600:#8b6914;--wood-800:#5a430a;--wood-900:#3a2a04;--sb-bg:#1e1a14;--sb-border:#3a3020;--sb-text:#c8b99a;--sb-muted:#7a6a52;--topbar-h:54px;--sidebar-w:230px;--bottom-nav-h:62px;--body-bg:#f7f3ed;--card-bg:#fff;--border:#e8dfd0;--tp:#1e1a14;--ts:#6b5e48;--tm:#9e8c75;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',sans-serif;background:var(--body-bg);color:var(--tp);}
+a{text-decoration:none;color:inherit;}
+/* SIDEBAR */
+#sidebar{position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;background:var(--sb-bg);border-right:1px solid var(--sb-border);display:flex;flex-direction:column;z-index:200;overflow-y:auto;}
+.sb-brand{padding:18px 20px 14px;border-bottom:1px solid var(--sb-border);}
+.sb-brand-name{font-family:'Fraunces',serif;font-size:18px;color:var(--wood-200);display:block;}
+.sb-brand-sub{font-size:10px;color:var(--sb-muted);letter-spacing:.08em;text-transform:uppercase;}
+.sb-sec{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--sb-muted);padding:16px 20px 5px;font-weight:500;}
+.sb-item{display:flex;align-items:center;gap:10px;padding:9px 20px;color:var(--sb-text);font-size:13.5px;cursor:pointer;border-left:2px solid transparent;transition:all .15s;text-decoration:none;}
+.sb-item i{font-size:16px;width:18px;flex-shrink:0;opacity:.75;}
+.sb-item:hover{background:#2d2618;color:#e8d5b0;}
+.sb-item.active{background:#3d3120;color:var(--wood-200);border-left-color:var(--wood-400);font-weight:500;}
+.sb-item.active i{opacity:1;}
+.sb-footer{margin-top:auto;padding:14px 20px;border-top:1px solid var(--sb-border);font-size:12px;color:var(--sb-muted);}
+/* TOPBAR */
+#topbar{position:fixed;top:0;left:var(--sidebar-w);right:0;height:var(--topbar-h);background:var(--card-bg);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:12px;z-index:100;}
+#page-title{font-size:16px;font-weight:500;flex:1;}
+.t-search{display:flex;align-items:center;background:var(--body-bg);border:1px solid var(--border);border-radius:8px;padding:0 10px;gap:6px;width:240px;}
+.t-search input{border:none;background:transparent;font-size:13px;color:var(--tp);padding:7px 0;outline:none;width:100%;}
+.t-search i{color:var(--tm);font-size:14px;}
+/* MAIN */
+#main{margin-left:var(--sidebar-w);margin-top:var(--topbar-h);padding:20px;min-height:calc(100vh - var(--topbar-h));}
+/* CARDS */
+.cv{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px;}
+.ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;}
+.ch h6{font-size:14px;font-weight:600;color:var(--tp);}
+/* STAT GRID */
+.sgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
+.sgrid.cols-3{grid-template-columns:repeat(3,1fr);}
+.sgrid.cols-2{grid-template-columns:repeat(2,1fr);}
+.sc{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px 18px;display:flex;justify-content:space-between;align-items:flex-start;}
+.sl{font-size:11px;color:var(--tm);text-transform:uppercase;letter-spacing:.07em;font-weight:500;margin-bottom:5px;}
+.sv{font-size:22px;font-weight:600;color:var(--tp);font-family:'Fraunces',serif;line-height:1.1;}
+.sc-change{font-size:11.5px;margin-top:5px;display:flex;align-items:center;gap:3px;}
+.si{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+.iw{background:var(--wood-100);color:var(--wood-600);}.ig{background:#eaf5e8;color:#2d6a27;}.ir{background:#fdecea;color:#b33a36;}.ib{background:#e8f0fd;color:#2a5aaa;}
+/* TWO COL LAYOUT */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.two-col.left-heavy{grid-template-columns:2fr 1fr;}
+.two-col.right-heavy{grid-template-columns:1fr 2fr;}
+/* TABLE */
+.tv{width:100%;border-collapse:collapse;}
+.tv thead th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--tm);font-weight:600;padding:0 12px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;}
+.tv tbody tr{border-bottom:1px solid var(--border);}
+.tv tbody tr:last-child{border-bottom:none;}
+.tv tbody td{padding:11px 12px;font-size:13px;color:var(--tp);vertical-align:middle;}
+.tv tbody tr:hover td{background:var(--body-bg);}
+/* MOBILE CARD LIST */
+.ml{display:none;flex-direction:column;gap:12px;}
+.mc{background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:16px;}
+.mct{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;}
+.mcn{font-size:14px;font-weight:600;color:var(--tp);}
+.mcs{font-size:12px;color:var(--tm);margin-top:2px;}
+.mr{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--border);}
+.mrk{font-size:12px;color:var(--tm);}.mrv{font-size:13px;font-weight:500;color:var(--tp);}
+/* BADGES */
+.bv{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;}
+.bg{background:#eaf5e8;color:#2d6a27;}.ba{background:#fef6e4;color:#a06a10;}.br{background:#fdecea;color:#b33a36;}.bb{background:#e8f0fd;color:#2a5aaa;}.bz{background:var(--body-bg);color:var(--tm);}
+.chip{display:inline-block;padding:2px 9px;border-radius:6px;font-size:11px;font-weight:500;background:var(--wood-100);color:var(--wood-800);}
+/* BUTTONS */
+.bw{background:var(--wood-800);color:var(--wood-100);border:none;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:'DM Sans',sans-serif;transition:background .15s;white-space:nowrap;text-decoration:none;}
+.bw:hover{background:var(--wood-900);color:var(--wood-100);}
+.bs{background:transparent;border:1px solid var(--border);color:var(--ts);border-radius:7px;padding:6px 14px;font-size:12px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-family:'DM Sans',sans-serif;transition:all .15s;text-decoration:none;}
+.bs:hover{background:var(--body-bg);}
+/* FORMS */
+.fl{font-size:11px;font-weight:600;color:var(--ts);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;display:block;}
+.fc{width:100%;background:var(--body-bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;color:var(--tp);font-family:'DM Sans',sans-serif;outline:none;transition:border-color .15s;}
+.fc:focus{border-color:var(--wood-400);background:#fff;}
+.fsel{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='%239e8c75' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px;}
+textarea.fc{resize:vertical;min-height:72px;}
+.frow{display:flex;gap:12px;margin-bottom:14px;}
+.fhalf{flex:1;min-width:0;}.fthird{flex:1;min-width:0;}.ffull{flex:1;}
+/* FORM PAGE HEADER */
+.fp-header{display:flex;align-items:center;gap:12px;margin-bottom:20px;}
+.fp-back{border:none;background:none;font-size:20px;color:var(--ts);cursor:pointer;padding:4px;line-height:1;display:flex;align-items:center;text-decoration:none;}
+.fp-back:hover{color:var(--tp);}
+.fp-title{font-size:18px;font-weight:600;font-family:'Fraunces',serif;color:var(--tp);}
+.fp-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-bottom:16px;}
+/* LINE ITEMS */
+.line-item{display:flex;gap:10px;align-items:flex-start;padding:14px;background:var(--body-bg);border-radius:10px;margin-bottom:10px;}
+.li-num{width:24px;height:24px;border-radius:50%;background:var(--wood-400);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:30px;}
+.li-body{flex:1;min-width:0;}
+.li-del{border:none;background:none;color:#b33a36;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;margin-top:28px;}
+.add-item-btn{background:transparent;color:var(--wood-600);border:1.5px dashed var(--wood-400);padding:9px 16px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:'DM Sans',sans-serif;margin-top:8px;}
+.add-item-btn:hover{background:var(--wood-100);}
+/* MISC */
+.av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;}
+.pv{height:6px;border-radius:4px;background:var(--body-bg);overflow:hidden;}
+.pf{height:100%;border-radius:4px;}
+.dv{border:none;border-top:1px solid var(--border);margin:12px 0;}
+/* ALERTS */
+.alert{padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.alert-success{background:#eaf5e8;color:#2d6a27;border:1px solid #c3e6cb;}
+.alert-error{background:#fdecea;color:#b33a36;border:1px solid #f5c6cb;}
+/* PROGRESS */
+.progress-row{margin-bottom:12px;}
+.progress-row-head{display:flex;justify-content:space-between;margin-bottom:4px;font-size:13px;}
+/* BOTTOM NAV */
+#bnav{display:none;position:fixed;bottom:0;left:0;right:0;height:var(--bottom-nav-h);background:var(--sb-bg);border-top:1px solid var(--sb-border);z-index:300;}
+.bn-inner{display:grid;grid-template-columns:repeat(5,1fr);height:100%;}
+.bn-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:none;background:transparent;color:var(--sb-muted);font-size:10px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;padding:0;border-top:2px solid transparent;transition:color .15s;text-decoration:none;}
+.bn-btn i{font-size:22px;}
+.bn-btn.active{color:var(--wood-200);border-top-color:var(--wood-400);}
+/* MORE DRAWER */
+#mdrawer{display:none;position:fixed;bottom:var(--bottom-nav-h);left:0;right:0;background:var(--sb-bg);border-top:1px solid var(--sb-border);z-index:299;padding:8px 0 12px;}
+#mdrawer.open{display:block;}
+.dg{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;padding:0 6px;}
+.db{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 4px;border:none;background:transparent;color:var(--sb-text);font-size:11px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;border-radius:8px;text-decoration:none;}
+.db i{font-size:24px;}
+.db:hover,.db:active{background:#2d2618;}
+#do{display:none;position:fixed;inset:0;z-index:298;}
+#do.open{display:block;}
+/* FAB */
+#fab{display:none;position:fixed;bottom:calc(var(--bottom-nav-h)+14px);right:16px;z-index:400;width:50px;height:50px;border-radius:50%;background:var(--wood-800);color:var(--wood-100);border:none;font-size:26px;box-shadow:0 3px 14px rgba(0,0,0,.3);cursor:pointer;text-decoration:none;align-items:center;justify-content:center;}
+/* ── DESKTOP ── */
+@media(min-width:768px){.ml{display:none!important;}#bnav,#mdrawer,#fab{display:none!important;}.two-col,.two-col.left-heavy,.two-col.right-heavy{display:grid;}}
+/* ── MOBILE ── */
+@media(max-width:767px){
+  :root{--topbar-h:50px;}
+  #hamburger{display:flex!important;align-items:center;}
+  #sidebar{transform:translateX(-100%);transition:transform .25s;}
+  #sidebar.sb-open{transform:translateX(0);}
+  #sb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:190;}
+  #sb-overlay.open{display:block!important;}
+  #bnav{display:block;}
+  #topbar{left:0;padding:0 16px;gap:10px;}
+  .t-search{display:none;}
+  #page-title{font-size:15px;}
+  #topbar-action{display:none!important;}
+  #main{margin-left:0;margin-top:var(--topbar-h);padding:16px 16px calc(var(--bottom-nav-h)+20px);}
+  .sgrid{grid-template-columns:1fr 1fr;gap:10px;}
+  .sgrid.cols-3{grid-template-columns:1fr 1fr;}
+  .sv{font-size:18px;}.sc{padding:12px 13px;}.si{width:30px;height:30px;font-size:13px;}
+  .dt{display:none!important;}.ml{display:flex!important;}
+  .cv{padding:14px;border-radius:10px;}
+  .two-col,.two-col.left-heavy,.two-col.right-heavy{grid-template-columns:1fr;}
+  .frow{flex-direction:column;gap:10px;}
+  .fp-actions{flex-direction:column-reverse;}
+  .fp-actions .bw,.fp-actions .bs{width:100%;justify-content:center;padding:13px;}
+  .line-item{flex-wrap:wrap;}.li-num,.li-del{margin-top:0;}
+  #fab.fab-show{display:flex!important;}
+}
+
+/* ── CUSTOM POPUP (replaces browser alert/confirm) ── */
+#vp-overlay{display:none;position:fixed;inset:0;background:rgba(30,26,20,.55);z-index:900;align-items:center;justify-content:center;padding:20px;}
+#vp-overlay.show{display:flex;}
+#vp-box{background:var(--card-bg);border-radius:14px;width:100%;max-width:400px;padding:24px;box-shadow:0 8px 40px rgba(0,0,0,.2);border:1px solid var(--border);animation:vpIn .18s ease;}
+@keyframes vpIn{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
+#vp-icon{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;margin:0 auto 14px;}
+#vp-title{font-size:16px;font-weight:600;text-align:center;margin-bottom:8px;font-family:'Fraunces',serif;}
+#vp-msg{font-size:13px;color:var(--ts);text-align:center;line-height:1.6;margin-bottom:20px;}
+#vp-btns{display:flex;gap:10px;justify-content:center;}
+#vp-btns button{border:none;border-radius:8px;padding:9px 22px;font-size:13px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
+#vp-cancel{background:var(--body-bg);color:var(--ts);border:1px solid var(--border)!important;}
+#vp-cancel:hover{background:var(--border);}
+#vp-ok{background:var(--wood-800);color:var(--wood-100);}
+#vp-ok:hover{background:var(--wood-900);}
+#vp-ok.danger{background:#b33a36;}
+#vp-ok.danger:hover{background:#8b1f1c;}
+
+/* ── Infinite Scroll ── */
+.scroll-sentinel{height:1px;margin-top:4px;}
+.scroll-loader{display:none;text-align:center;padding:16px;color:var(--tm);font-size:13px;}
+.scroll-loader.active{display:block;}
+.scroll-loader-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--wood-400);margin:0 3px;animation:sdot .8s infinite alternate;}
+.scroll-loader-dot:nth-child(2){animation-delay:.2s;}
+.scroll-loader-dot:nth-child(3){animation-delay:.4s;}
+@keyframes sdot{from{opacity:.2;transform:translateY(0)}to{opacity:1;transform:translateY(-4px)}}
+.scroll-end{text-align:center;padding:14px;color:var(--tm);font-size:12px;display:none;}
+.scroll-end.show{display:block;}
+</style>
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<!-- CUSTOM POPUP -->
+<div id="vp-overlay">
+  <div id="vp-box">
+    <div id="vp-icon"></div>
+    <div id="vp-title"></div>
+    <div id="vp-msg"></div>
+    <div id="vp-btns">
+      <button id="vp-cancel" style="display:none;">Cancel</button>
+      <button id="vp-ok">OK</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- SIDEBAR -->
+<nav id="sidebar">
+  <div class="sb-brand"><span class="sb-brand-name">VeneerPro</span><span class="sb-brand-sub">Godown Management</span></div>
+  {% with profile=profile %}
+  {% if profile.is_admin %}
+  <div class="sb-sec">Overview</div>
+  <a class="sb-item {% if active == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><i class="bi bi-grid-1x2"></i>Dashboard</a>
+  <a class="sb-item {% if active == 'analytics' %}active{% endif %}" href="{% url 'analytics' %}"><i class="bi bi-bar-chart-line"></i>Analytics</a>
+  <a class="sb-item {% if active == 'grn_profit' %}active{% endif %}" href="{% url 'grn_profit' %}"><i class="bi bi-graph-up-arrow"></i>GRN Profit</a>
+  {% endif %}
+  <a class="sb-item {% if active == 'stock_board' %}active{% endif %}" href="{% url 'stock_board' %}"><i class="bi bi-grid-3x3-gap"></i>Stock Board</a>
+  <a class="sb-item {% if active == 'reorder_alerts' %}active{% endif %}" href="{% url 'reorder_alerts' %}"><i class="bi bi-bell"></i>Reorder Alerts</a>
+  <div class="sb-sec">Operations</div>
+  <a class="sb-item {% if active == 'po' %}active{% endif %}" href="{% url 'po_list' %}"><i class="bi bi-file-earmark-text"></i>Purchase Orders</a>
+  <a class="sb-item {% if active == 'stock_in' %}active{% endif %}" href="{% url 'stock_in_list' %}"><i class="bi bi-box-arrow-in-down"></i>Stock In (GRN)</a>
+  <a class="sb-item {% if active == 'sales' %}active{% endif %}" href="{% url 'sales_list' %}"><i class="bi bi-receipt"></i>Sales</a>
+  <a class="sb-item {% if active == 'estimations' %}active{% endif %}" href="{% url 'estimations' %}"><i class="bi bi-clipboard-check"></i>Estimations</a>
+  <a class="sb-item {% if active == 'products' %}active{% endif %}" href="{% url 'products' %}"><i class="bi bi-layers"></i>Products</a>
+  <div class="sb-sec">Parties</div>
+  <a class="sb-item {% if active == 'customers' %}active{% endif %}" href="{% url 'customers' %}"><i class="bi bi-people"></i>Customers</a>
+  <a class="sb-item {% if active == 'suppliers' %}active{% endif %}" href="{% url 'suppliers' %}"><i class="bi bi-truck"></i>Suppliers</a>
+  <div class="sb-sec">Accounts</div>
+  <a class="sb-item {% if active == 'receivables' %}active{% endif %}" href="{% url 'receivables' %}"><i class="bi bi-arrow-down-circle"></i>Receivables</a>
+  <a class="sb-item {% if active == 'payables' %}active{% endif %}" href="{% url 'payables' %}"><i class="bi bi-arrow-up-circle"></i>Payables</a>
+  <a class="sb-item {% if active == 'expenses' %}active{% endif %}" href="{% url 'expenses' %}"><i class="bi bi-wallet"></i>Expenses</a>
+        <a class="nl {% if active == 'damages' %}na{% endif %}" href="{% url 'damage_list' %}"><i class="bi bi-exclamation-triangle"></i><span>Damage Records</span></a>
+  {% if profile.is_admin %}
+  <div class="sb-sec">Admin</div>
+  <a class="sb-item {% if active == 'users' %}active{% endif %}" href="{% url 'user_list' %}"><i class="bi bi-person-gear"></i>Users</a>
+  {% endif %}
+  <div class="sb-footer">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <div style="width:30px;height:30px;border-radius:50%;background:var(--wood-400);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;">{{ request.user.get_full_name|default:request.user.username|slice:":2"|upper }}</div>
+      <div><div style="font-size:13px;font-weight:500;color:var(--sb-text);">{{ request.user.get_full_name|default:request.user.username }}</div><div style="font-size:10px;color:var(--sb-muted);">{{ profile.get_role_display }}</div></div>
+    </div>
+    {% if profile.is_admin %}<a href="{% url 'godown_settings' %}" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--sb-muted);text-decoration:none;padding:4px 0;"><i class="bi bi-gear" style="font-size:14px;"></i>Settings</a>
+    <a href="{% url 'lookup_list' %}" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--sb-muted);text-decoration:none;padding:4px 0;"><i class="bi bi-table" style="font-size:14px;"></i>Lookup Tables</a>{% endif %}
+    <a href="{% url 'logout' %}" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--sb-muted);text-decoration:none;padding:6px 0;"><i class="bi bi-box-arrow-left" style="font-size:14px;"></i>Sign Out</a>
+  </div>
+  {% endwith %}
+</nav>
+
+<!-- SIDEBAR OVERLAY -->
+<div id="sb-overlay" onclick="closeSidebar()"></div>
+
+<!-- BOTTOM NAV -->
+<nav id="bnav">
+  <div class="bn-inner">
+    <a class="bn-btn {% if active == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><i class="bi bi-grid-1x2"></i>Home</a>
+    <a class="bn-btn {% if active == 'sales' %}active{% endif %}" href="{% url 'sales_list' %}"><i class="bi bi-receipt"></i>Sales</a>
+    <a class="bn-btn {% if active == 'stock_in' %}active{% endif %}" href="{% url 'stock_in_list' %}"><i class="bi bi-box-arrow-in-down"></i>Stock</a>
+    <a class="bn-btn {% if active == 'receivables' %}active{% endif %}" href="{% url 'receivables' %}"><i class="bi bi-arrow-down-circle"></i>Receive</a>
+    <button class="bn-btn" onclick="toggleDrawer()"><i class="bi bi-grid-2x2"></i>More</button>
+  </div>
+</nav>
+
+<!-- MORE DRAWER -->
+<div id="do" onclick="closeDrawer()"></div>
+<div id="mdrawer">
+  <div class="dg">
+    <a class="db" href="{% url 'customers' %}"><i class="bi bi-people"></i>Customers</a>
+    <a class="db" href="{% url 'suppliers' %}"><i class="bi bi-truck"></i>Suppliers</a>
+    <a class="db" href="{% url 'payables' %}"><i class="bi bi-arrow-up-circle"></i>Payables</a>
+    <a class="db" href="{% url 'expenses' %}"><i class="bi bi-wallet"></i>Expenses</a>
+        <a class="nl {% if active == 'damages' %}na{% endif %}" href="{% url 'damage_list' %}"><i class="bi bi-exclamation-triangle"></i><span>Damage Records</span></a>
+    <a class="db" href="{% url 'products' %}"><i class="bi bi-layers"></i>Products</a>
+    <a class="db" href="{% url 'estimations' %}"><i class="bi bi-clipboard-check"></i>Estimates</a>
+    <a class="db" href="{% url 'po_list' %}"><i class="bi bi-file-earmark-text"></i>PO Orders</a>
+    {% if request.user.profile.is_admin %}
+    <a class="db" href="{% url 'analytics' %}"><i class="bi bi-bar-chart-line"></i>Analytics</a>
+    <a class="db" href="{% url 'user_list' %}"><i class="bi bi-person-gear"></i>Users</a>
+    {% endif %}
+    <a class="db" href="{% url 'logout' %}"><i class="bi bi-box-arrow-left"></i>Sign Out</a>
+  </div>
+</div>
+
+<!-- FAB -->
+{% block fab %}{% endblock %}
+
+<!-- TOPBAR -->
+<header id="topbar">
+  <button id="hamburger" onclick="toggleSidebar()" style="display:none;border:none;background:none;color:var(--tp);font-size:22px;padding:0 4px 0 0;cursor:pointer;flex-shrink:0;line-height:1;"><i class="bi bi-list"></i></button>
+  <span id="page-title">{% block page_title %}Dashboard{% endblock %}</span>
+  <div class="t-search"><i class="bi bi-search"></i><input type="text" placeholder="Search…"></div>
+  {% block topbar_action %}{% endblock %}
+  <div style="position:relative;">
+    <button onclick="toggleUserMenu()" style="width:34px;height:34px;border-radius:50%;background:var(--wood-400);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:12px;cursor:pointer;border:none;flex-shrink:0;">{{ request.user.get_full_name|default:request.user.username|slice:":2"|upper }}</button>
+    <div id="user-menu" style="display:none;position:absolute;right:0;top:42px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.12);min-width:180px;z-index:500;overflow:hidden;">
+      <div style="padding:12px 14px;border-bottom:1px solid var(--border);">
+        <div style="font-size:13px;font-weight:600;">{{ request.user.get_full_name|default:request.user.username }}</div>
+        <div style="font-size:11px;color:var(--tm);">{{ request.user.profile.get_role_display }}</div>
+      </div>
+      {% if request.user.profile.is_admin %}
+      <a href="{% url 'user_list' %}" style="display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:13px;color:var(--tp);text-decoration:none;" onmouseover="this.style.background='var(--body-bg)'" onmouseout="this.style.background='none'"><i class="bi bi-person-gear"></i>Manage Users</a>
+      {% endif %}
+      <a href="{% url 'logout' %}" style="display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:13px;color:#b33a36;text-decoration:none;border-top:1px solid var(--border);" onmouseover="this.style.background='var(--body-bg)'" onmouseout="this.style.background='none'"><i class="bi bi-box-arrow-left"></i>Sign Out</a>
+    </div>
+  </div>
+</header>
+
+<!-- MESSAGES -->
+<main id="main">
+{% if messages %}
+  {% for msg in messages %}
+    <div class="alert alert-{% if msg.tags == 'error' %}error{% else %}success{% endif %}"><i class="bi bi-{% if msg.tags == 'error' %}exclamation-circle{% else %}check-circle{% endif %}"></i>{{ msg }}</div>
+  {% endfor %}
+{% endif %}
+{% block content %}{% endblock %}
+</main>
+
+<script>
+
+
+// ── Infinite Scroll Engine ────────────────────────────────────────
+// Usage: initInfiniteScroll(containerSelector, fetchUrl, renderFn, options)
+// renderFn(row) must return an HTML string for each row
+window.initInfiniteScroll = function(opts) {
+  const {
+    tableBody,      // CSS selector for <tbody> (desktop) or mobile list
+    mobileList,     // CSS selector for mobile list container
+    fetchUrl,       // base URL — ?format=json&page=N appended
+    renderRow,      // fn(row) → <tr> HTML string
+    renderCard,     // fn(row) → mobile card HTML string
+    sentinel,       // CSS selector for the scroll sentinel div
+    loader,         // CSS selector for loader div
+    endMsg,         // CSS selector for "all loaded" div
+  } = opts;
+
+  let page     = 2;   // page 1 already rendered server-side
+  let loading  = false;
+  let finished = false;
+
+  const tbody   = document.querySelector(tableBody);
+  const mlist   = document.querySelector(mobileList);
+  const loaderEl = document.querySelector(loader);
+  const endEl    = document.querySelector(endMsg);
+  const sentinelEl = document.querySelector(sentinel);
+
+  if (!sentinelEl) return;  // no sentinel = no infinite scroll on this page
+
+  async function loadMore() {
+    if (loading || finished) return;
+    loading = true;
+    if (loaderEl) loaderEl.classList.add('active');
+
+    try {
+      const sep = fetchUrl.includes('?') ? '&' : '?';
+      const r   = await fetch(fetchUrl + sep + 'format=json&page=' + page);
+      const data = await r.json();
+
+      if (data.rows && data.rows.length > 0) {
+        if (tbody && renderRow) {
+          tbody.insertAdjacentHTML('beforeend', data.rows.map(renderRow).join(''));
+        }
+        if (mlist && renderCard) {
+          mlist.insertAdjacentHTML('beforeend', data.rows.map(renderCard).join(''));
+        }
+      }
+
+      if (!data.has_more) {
+        finished = true;
+        if (endEl && data.rows && data.rows.length > 0) {
+          endEl.classList.add('show');
+        }
+        observer.disconnect();
+      } else {
+        page++;
+      }
+    } catch(e) {
+      console.error('Infinite scroll fetch error:', e);
+    } finally {
+      loading = false;
+      if (loaderEl) loaderEl.classList.remove('active');
+    }
+  }
+
+  const observer = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting) loadMore();
+  }, { rootMargin: '200px' });  // start loading 200px before sentinel is visible
+
+  observer.observe(sentinelEl);
+};
+
+// ── VeneerPro Custom Popups ──────────────────────────────────────
+const vp = {
+  _resolve: null,
+  _overlay: null,
+  _init() {
+    if (this._overlay) return;
+    this._overlay = document.getElementById('vp-overlay');
+    document.getElementById('vp-ok').onclick     = () => this._close(true);
+    document.getElementById('vp-cancel').onclick  = () => this._close(false);
+    this._overlay.addEventListener('click', e => { if(e.target===this._overlay) this._close(false); });
+    document.addEventListener('keydown', e => { if(e.key==='Escape') this._close(false); if(e.key==='Enter') this._close(true); });
+  },
+  _show(opts) {
+    this._init();
+    const icons = { warning:'⚠️', error:'❌', success:'✅', info:'ℹ️', delete:'🗑️' };
+    const colors = { warning:'#fef6e4', error:'#fdecea', success:'#eaf5e8', info:'#e8f0fd', delete:'#fdecea' };
+    const type = opts.type || 'info';
+    document.getElementById('vp-icon').textContent = icons[type] || 'ℹ️';
+    document.getElementById('vp-icon').style.background = colors[type] || '#e8f0fd';
+    document.getElementById('vp-title').textContent = opts.title || '';
+    document.getElementById('vp-msg').textContent   = opts.message || '';
+    const okBtn = document.getElementById('vp-ok');
+    const cancelBtn = document.getElementById('vp-cancel');
+    okBtn.textContent = opts.okText || 'OK';
+    okBtn.className   = type === 'delete' ? 'danger' : '';
+    cancelBtn.style.display = opts.confirm ? '' : 'none';
+    cancelBtn.textContent   = opts.cancelText || 'Cancel';
+    this._overlay.classList.add('show');
+    setTimeout(() => okBtn.focus(), 100);
+    return new Promise(resolve => { this._resolve = resolve; });
+  },
+  _close(result) {
+    this._overlay.classList.remove('show');
+    if (this._resolve) { this._resolve(result); this._resolve = null; }
+  },
+  alert(message, title='Notice', type='info') {
+    return this._show({ title, message, type, confirm: false });
+  },
+  confirm(message, title='Are you sure?', type='warning') {
+    return this._show({ title, message, type, confirm: true, okText:'Yes, proceed', cancelText:'Cancel' });
+  },
+  confirmDelete(itemName) {
+    return this._show({ title:'Delete ' + itemName + '?', message:'This action cannot be undone.', type:'delete', confirm:true, okText:'Yes, Delete', cancelText:'Keep it' });
+  },
+  success(message) {
+    return this._show({ title:'Done!', message, type:'success', confirm:false });
+  },
+  error(message) {
+    return this._show({ title:'Error', message, type:'error', confirm:false });
+  }
+};
+
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('sb-open');document.getElementById('sb-overlay').classList.toggle('open');}
+function closeSidebar(){document.getElementById('sidebar').classList.remove('sb-open');document.getElementById('sb-overlay').classList.remove('open');}
+function toggleDrawer(){const open=document.getElementById('mdrawer').classList.toggle('open');document.getElementById('do').classList.toggle('open',open);}
+function closeDrawer(){document.getElementById('mdrawer').classList.remove('open');document.getElementById('do').classList.remove('open');}
+function toggleUserMenu(){const m=document.getElementById('user-menu');m.style.display=m.style.display==='none'?'block':'none';}
+document.addEventListener('click',function(e){const m=document.getElementById('user-menu');if(m&&!e.target.closest('#user-menu')&&!e.target.closest('button[onclick="toggleUserMenu()"]'))m.style.display='none';});
+
+// Line item logic
+function addLineItem(containerId){
+  const container=document.getElementById(containerId);
+  const items=container.querySelectorAll('.line-item');
+  const n=items.length+1;
+  const tpl=items[0].cloneNode(true);
+  tpl.querySelectorAll('input').forEach(i=>i.value='');
+  tpl.querySelectorAll('select').forEach(s=>s.selectedIndex=0);
+  tpl.querySelector('.li-del').style.display='flex';
+  tpl.querySelector('.li-num').textContent=n;
+  container.appendChild(tpl);
+  container.querySelectorAll('.li-del').forEach(b=>b.style.display='flex');
+}
+function removeLI(btn){
+  const container=btn.closest('.line-item').parentElement;
+  btn.closest('.line-item').remove();
+  const items=container.querySelectorAll('.line-item');
+  items.forEach((item,i)=>{item.querySelector('.li-num').textContent=i+1;});
+  if(items.length===1)items[0].querySelector('.li-del').style.display='none';
+  updateTotal(container);
+}
+function calcLI(inp){
+  const li=inp.closest('.line-item');
+  const nums=li.querySelectorAll('input[type=number]');
+  const qty=parseFloat(nums[0].value)||0;
+  const rate=parseFloat(nums[1].value)||0;
+  const amtEl=li.querySelector('.li-amt');
+  if(amtEl)amtEl.value=qty&&rate?(qty*rate).toLocaleString('en-IN'):'';
+  updateTotal(li.closest('[id$="-items"]'));
+}
+function updateTotal(container){
+  if(!container)return;
+  let total=0;
+  container.querySelectorAll('.li-amt').forEach(a=>{total+=parseFloat((a.value||'0').replace(/,/g,''))||0;});
+  const tid=container.id==='si-items'?'si-total':'sale-total';
+  const el=document.getElementById(tid);
+  if(el)el.textContent='₹'+total.toLocaleString('en-IN');
+}
+// Show del buttons if multiple items on load
+document.addEventListener('DOMContentLoaded',()=>{
+  ['si-items','sale-items'].forEach(cid=>{
+    const c=document.getElementById(cid);
+    if(!c)return;
+    const items=c.querySelectorAll('.line-item');
+    if(items.length>1)items.forEach(i=>i.querySelector('.li-del').style.display='flex');
+  });
+});
+</script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

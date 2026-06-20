@@ -1,0 +1,90 @@
+{% extends "godown/base.html" %}
+{% block title %}Damage Records{% endblock %}
+{% block page_title %}Stock Damage{% endblock %}
+{% block topbar_action %}<a class="bw" id="topbar-action" href="{% url 'add_damage' %}"><i class="bi bi-plus"></i> Record Damage</a>{% endblock %}
+{% block fab %}<a id="fab" class="fab-show" href="{% url 'add_damage' %}" style="display:flex;"><i class="bi bi-plus"></i></a>{% endblock %}
+{% block content %}
+
+<!-- Summary -->
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
+  <div class="sc"><div><div class="sl">Total Damaged</div><div class="sv" style="color:#b33a36;">{{ total_qty|floatformat:0 }} sqft</div></div><div class="si ir"><i class="bi bi-exclamation-triangle"></i></div></div>
+  <div class="sc"><div><div class="sl">Total Write-off</div><div class="sv" style="color:#b33a36;">₹{{ total_write_off|floatformat:0 }}</div><div class="sc-change" style="color:var(--tm);">At cost rate</div></div></div>
+  <div class="sc"><div><div class="sl">Records</div><div class="sv">{{ damages|length }}</div></div></div>
+</div>
+
+<!-- By Category -->
+{% if by_category %}
+<div class="cv" style="margin-bottom:14px;">
+  <div class="ch"><h6>By Category</h6></div>
+  <div style="display:flex;flex-wrap:wrap;gap:10px;">
+    {% for cat, data in by_category.items %}
+    <div style="background:var(--body-bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;min-width:150px;">
+      <div style="font-size:12px;font-weight:600;color:var(--ts);">{{ cat }}</div>
+      <div style="font-size:13px;font-weight:700;color:#b33a36;margin-top:4px;">{{ data.qty|floatformat:0 }} sqft</div>
+      <div style="font-size:11px;color:var(--tm);">₹{{ data.value|floatformat:0 }} write-off · {{ data.count }} record{{ data.count|pluralize }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Damage Records -->
+<div class="cv">
+  <div class="ch">
+    <h6>Damage Records</h6>
+    <a class="bw" href="{% url 'add_damage' %}"><i class="bi bi-plus"></i> Record Damage</a>
+  </div>
+
+  <table class="tv dt">
+    <thead>
+      <tr><th>Date</th><th>Product</th><th>GRN Ref</th><th>Category</th><th>Qty (sqft)</th><th>Cost Rate</th><th>Write-off Value</th><th>Description</th><th>By</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for d in damages %}
+    <tr>
+      <td style="color:var(--tm);">{{ d.date }}</td>
+      <td style="font-weight:500;">{{ d.product.display_name }}</td>
+      <td>{% if d.grn %}<a href="{% url 'grn_detail' d.grn.pk %}" style="color:var(--wood-600);">{{ d.grn.grn_number }}</a>{% else %}<span style="color:var(--tm);">—</span>{% endif %}</td>
+      <td>
+        <span class="bv br" style="font-size:10px;">{{ d.get_category_display }}</span>
+      </td>
+      <td style="color:#b33a36;font-weight:600;">{{ d.qty_sqft|floatformat:2 }}</td>
+      <td style="color:var(--tm);">₹{{ d.cost_rate|floatformat:2 }}/sqft</td>
+      <td style="font-weight:600;color:#b33a36;">₹{{ d.write_off_value|floatformat:0 }}</td>
+      <td style="font-size:12px;color:var(--tm);">{{ d.description|default:"—"|truncatechars:40 }}</td>
+      <td style="font-size:11px;color:var(--tm);">{{ d.reported_by.get_full_name|default:d.reported_by.username }}</td>
+      <td>
+        <form method="post" action="{% url 'delete_damage' d.pk %}" style="display:inline;"
+              onsubmit="return confirm('Delete this damage record? Stock will be restored.');">
+          {% csrf_token %}
+          <button type="submit" class="bs" style="color:#b33a36;border-color:#f5c6cb;padding:4px 8px;" title="Delete and restore stock">
+            <i class="bi bi-trash3"></i>
+          </button>
+        </form>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="10" style="text-align:center;color:var(--tm);padding:30px;">No damage records yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Mobile -->
+  <div class="ml">
+  {% for d in damages %}
+  <div class="mc">
+    <div class="mct">
+      <div>
+        <div class="mcn">{{ d.product.display_name }}</div>
+        <div class="mcs">{{ d.date }} · {% if d.grn %}{{ d.grn.grn_number }}{% else %}No GRN{% endif %}</div>
+      </div>
+      <span class="bv br" style="font-size:10px;">{{ d.get_category_display }}</span>
+    </div>
+    <div class="mr"><span class="mrk">Qty Damaged</span><span class="mrv" style="color:#b33a36;font-weight:600;">{{ d.qty_sqft|floatformat:2 }} sqft</span></div>
+    <div class="mr"><span class="mrk">Write-off</span><span class="mrv" style="color:#b33a36;font-weight:600;">₹{{ d.write_off_value|floatformat:0 }}</span></div>
+    {% if d.description %}<div class="mr"><span class="mrk">Note</span><span class="mrv">{{ d.description }}</span></div>{% endif %}
+  </div>
+  {% endfor %}
+  </div>
+</div>
+{% endblock %}

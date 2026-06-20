@@ -1,0 +1,22 @@
+{% extends "godown/base.html" %}
+{% block title %}Add Advance — {{ po.po_number }}{% endblock %}
+{% block page_title %}Add Advance{% endblock %}
+{% block content %}
+<div class="fp-header"><a class="fp-back" href="{% url 'po_detail' po.pk %}"><i class="bi bi-arrow-left"></i></a><span class="fp-title">Add Advance — {{ po.po_number }}</span></div>
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;justify-content:space-between;padding:12px;background:var(--body-bg);border-radius:8px;margin-bottom:14px;">
+    <div><div style="font-size:13px;font-weight:600;">{{ po.supplier.name }}</div><div style="font-size:12px;color:var(--tm);">{{ po.po_number }} · PO Value: ₹{{ po.total_value|floatformat:0 }}</div></div>
+    <div style="text-align:right;"><div style="font-size:16px;font-weight:700;color:#2d6a27;">₹{{ po.advance_paid|floatformat:0 }}</div><div style="font-size:11px;color:var(--tm);">Advance so far</div></div>
+  </div>
+</div>
+<form method="post">{% csrf_token %}
+<div class="cv">
+  <div class="frow">
+    <div class="fhalf"><label class="fl">Additional Advance (₹) *</label><input class="fc" name="amount" type="number" step="0.01" required placeholder="0"></div>
+    <div class="fhalf"><label class="fl">Payment Mode</label><select class="fc fsel" name="mode"><option value="bank">Bank Transfer / NEFT</option><option value="upi">UPI</option><option value="cash">Cash</option><option value="cheque">Cheque</option></select></div>
+  </div>
+  <div class="frow"><div class="ffull"><label class="fl">Reference / UTR No</label><input class="fc" name="ref" placeholder="Transaction reference (optional)"></div></div>
+</div>
+<div class="fp-actions"><a class="bs" href="{% url 'po_detail' po.pk %}">Cancel</a><button class="bw" type="submit"><i class="bi bi-check2"></i> Record Advance</button></div>
+</form>
+{% endblock %}

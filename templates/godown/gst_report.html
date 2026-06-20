@@ -1,0 +1,46 @@
+{% extends "godown/base.html" %}
+{% block title %}GST Report{% endblock %}
+{% block page_title %}GST Report{% endblock %}
+{% block content %}
+<div class="cv" style="margin-bottom:16px;background:var(--wood-100);border-color:var(--wood-200);">
+  <h6 style="color:var(--wood-800);margin-bottom:10px;"><i class="bi bi-info-circle"></i> Understanding Your GST</h6>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;font-size:12px;color:var(--wood-800);line-height:1.8;">
+    <div><strong>📥 Output Tax (Collected)</strong><br>GST you charge on every sale invoice at {{ gst_rate }}%. Customer pays this — you hold it for govt.</div>
+    <div><strong>🔄 Input Tax Credit (ITC)</strong><br>GST your suppliers charged on your purchases. You deduct this from what you owe.</div>
+    <div><strong>🏛️ Net Payable to Govt</strong><br>Output Tax − ITC = Amount to pay via GST portal. File GSTR-3B monthly.</div>
+  </div>
+</div>
+
+<div class="cv">
+  <div class="ch"><h6>Monthly GST Summary — Last 12 Months</h6></div>
+  <table class="tv">
+    <thead>
+      <tr>
+        <th>Month</th>
+        <th class="right">Taxable Sales</th>
+        <th class="right">GST Collected (Output)</th>
+        <th class="right">Purchase Value</th>
+        <th class="right">ITC Available (Input)</th>
+        <th class="right">Net Payable to Govt</th>
+        <th class="right">Savings via ITC</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for m in months %}
+    <tr>
+      <td style="font-weight:500;">{{ m.month }}</td>
+      <td style="text-align:right;">₹{{ m.taxable_sales|floatformat:0 }}</td>
+      <td style="text-align:right;color:#2d6a27;font-weight:500;">₹{{ m.gst_collected|floatformat:0 }}</td>
+      <td style="text-align:right;color:var(--tm);">₹{{ m.purchase_val|floatformat:0 }}</td>
+      <td style="text-align:right;color:#2a5aaa;font-weight:500;">₹{{ m.itc|floatformat:0 }}</td>
+      <td style="text-align:right;font-weight:700;color:{% if m.net_payable > 0 %}#b33a36{% else %}#2d6a27{% endif %};">₹{{ m.net_payable|floatformat:0 }}</td>
+      <td style="text-align:right;color:#2a5aaa;">₹{{ m.itc|floatformat:0 }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div style="margin-top:12px;font-size:11px;color:var(--tm);padding:10px 12px;background:var(--body-bg);border-radius:8px;">
+    ⚠️ This is an estimate based on purchase values at {{ gst_rate }}% GST rate. Actual ITC depends on GST-registered supplier invoices (GSTR-2A). Consult your GST practitioner for filing.
+  </div>
+</div>
+{% endblock %}

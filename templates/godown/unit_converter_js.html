@@ -1,0 +1,173 @@
+{# Shared unit conversion JS — include in {% block extra_js %} #}
+<script>
+const PRODUCT_CACHE = {};
+
+async function fetchProduct(pid) {
+  if (!pid) return null;
+  if (PRODUCT_CACHE[pid]) return PRODUCT_CACHE[pid];
+  try {
+    const r = await fetch('/api/product/' + pid + '/');
+    PRODUCT_CACHE[pid] = await r.json();
+    return PRODUCT_CACHE[pid];
+  } catch { return null; }
+}
+
+function getLI(el) { return el.closest('.line-item'); }
+
+/**
+ * calcSqft — reads pieces/length/width, writes to the hidden qty_sqft[] input
+ * inside .pcs-section, then calls calcLineAmount.
+ * Rate field is OUTSIDE both sections — always visible, always one copy.
+ */
+function calcSqft(li) {
+  const pcs = parseFloat(li.querySelector('[name="pieces[]"]')?.value) || 0;
+  const len = parseFloat(li.querySelector('[name="sheet_length[]"]')?.value) || 0;
+  const wid = parseFloat(li.querySelector('[name="sheet_width[]"]')?.value) || 0;
+  const sqft = pcs * len * wid;
+
+  // Write to the hidden qty_sqft[] inside pcs-section
+  // (there's also one in sqft-section — we only want the pcs one)
+  const pcsSection = li.querySelector('.pcs-section[style*="none"] + .pcs-section, .pcs-section');
+  // Simpler: get ALL hidden qty_sqft inputs, update the one that's in a visible pcs-section
+  li.querySelectorAll('[name="qty_sqft[]"]').forEach(inp => {
+    // Only update if this input is inside a pcs-section (or is the standalone hidden one)
+    if (!inp.closest('.sqft-section')) {
+      inp.value = sqft > 0 ? sqft.toFixed(4) : '';
+    }
+  });
+
+  // Update display
+  const disp = li.querySelector('.qty-calc');
+  if (disp) {
+    if (pcs && len && wid) {
+      disp.textContent = `${pcs} pcs × ${len}×${wid} ft = ${sqft.toFixed(2)} sqft`;
+      disp.style.color = 'var(--wood-600)';
+    } else {
+      disp.textContent = 'Fill pieces and dimensions above';
+      disp.style.color = 'var(--tm)';
+    }
+  }
+  calcLineAmount(li);
+}
+
+/**
+ * calcLineAmount — reads qty_sqft (whichever is filled) and rate_per_sqft (single field).
+ * Rate field is always outside sections so querySelector always finds it.
+ */
+function calcLineAmount(li) {
+  // Get qty — prefer the hidden input that has a value
+  let sqft = 0;
+  li.querySelectorAll('[name="qty_sqft[]"]').forEach(inp => {
+    const v = parseFloat(inp.value) || 0;
+    if (v > 0) sqft = v;
+  });
+
+  // Rate — single field, always visible
+  const rate = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;
+  const amt  = sqft * rate;
+  const amtEl = li.querySelector('.li-amt');
+  if (amtEl) amtEl.value = amt > 0 ? amt.toLocaleString('en-IN', {maximumFractionDigits: 2}) : '';
+  updateGrandTotal();
+}
+
+function updateGrandTotal() {
+  let total = 0;
+  document.querySelectorAll('.li-amt').forEach(a => {
+    total += parseFloat((a.value || '0').replace(/,/g, '')) || 0;
+  });
+  ['po-total', 'si-total', 'si-items-total'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '₹' + total.toLocaleString('en-IN', {maximumFractionDigits: 0});
+  });
+}
+
+async function onUnitChange(sel) {
+  const li   = getLI(sel);
+  const unit = sel.value;
+
+  // Update hidden unit field
+  const unitHidden = li.querySelector('[name="qty_unit[]"]');
+  if (unitHidden) unitHidden.value = unit;
+
+  const pcsSections  = li.querySelectorAll('.pcs-section');
+  const sqftSections = li.querySelectorAll('.sqft-section');
+
+  if (unit === 'pcs') {
+    sqftSections.forEach(s => s.style.display = 'none');
+    pcsSections.forEach(s => s.style.display = '');
+    // Clear the sqft-section hidden input so it doesn't submit stale value
+    li.querySelectorAll('.sqft-section [name="qty_sqft[]"]').forEach(inp => inp.value = '');
+
+    // Auto-fill sheet dims from product
+    const pid = li.querySelector('[name="product[]"]')?.value;
+    if (pid) {
+      const prod = await fetchProduct(pid);
+      if (prod) {
+        const lenEl = li.querySelector('[name="sheet_length[]"]');
+        const widEl = li.querySelector('[name="sheet_width[]"]');
+        if (lenEl && !lenEl.value) lenEl.value = prod.sheet_length;
+        if (widEl && !widEl.value) widEl.value = prod.sheet_width;
+        calcSqft(li);
+      }
+    }
+  } else {
+    pcsSections.forEach(s => s.style.display = 'none');
+    sqftSections.forEach(s => s.style.display = '');
+    // Clear pcs hidden inputs
+    li.querySelectorAll('.pcs-section [name="qty_sqft[]"]').forEach(inp => inp.value = '');
+    // Sync visible sqft input → hidden
+    const sqftVisible = li.querySelector('.sqft-input');
+    const sqftHidden  = li.querySelector('.sqft-section [name="qty_sqft[]"]');
+    if (sqftVisible && sqftHidden) sqftHidden.value = sqftVisible.value;
+    calcLineAmount(li);
+  }
+}
+
+async function onProductChange(sel) {
+  const li  = getLI(sel);
+  const pid = sel.value;
+  if (!pid) return;
+  const prod = await fetchProduct(pid);
+  if (!prod) return;
+  // Set placeholders
+  const lenEl = li.querySelector('[name="sheet_length[]"]');
+  const widEl = li.querySelector('[name="sheet_width[]"]');
+  if (lenEl) lenEl.placeholder = prod.sheet_length;
+  if (widEl) widEl.placeholder = prod.sheet_width;
+
+  const unit = li.querySelector('.unit-sel')?.value;
+  if (unit === 'pcs') {
+    if (lenEl && !lenEl.value) lenEl.value = prod.sheet_length;
+    if (widEl && !widEl.value) widEl.value = prod.sheet_width;
+    calcSqft(li);
+  }
+
+  // Show stock info
+  const info = li.querySelector('.product-stock-info');
+  if (info) info.textContent =
+    `Stock: ${prod.stock_qty.toFixed(0)} sqft  |  Sheet: ${prod.sheet_length}×${prod.sheet_width} ft (${prod.sheet_sqft.toFixed(2)} sqft/sheet)`;
+}
+
+function onSqftInput(inp) {
+  const li = getLI(inp);
+  // Sync visible input → hidden qty_sqft in sqft-section
+  const hidden = li.querySelector('.sqft-section [name="qty_sqft[]"]');
+  if (hidden) hidden.value = inp.value;
+  calcLineAmount(li);
+}
+
+function removeLI(btn) {
+  const container = btn.closest('.line-item').parentElement;
+  btn.closest('.line-item').remove();
+  const items = container.querySelectorAll('.line-item');
+  items.forEach((item, i) => {
+    const num = item.querySelector('.li-num');
+    if (num) num.textContent = i + 1;
+  });
+  if (items.length === 1) {
+    const del = items[0].querySelector('.li-del');
+    if (del) del.style.display = 'none';
+  }
+  updateGrandTotal();
+}
+</script>

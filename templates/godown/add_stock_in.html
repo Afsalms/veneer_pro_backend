@@ -1,0 +1,660 @@
+{% extends "godown/base.html" %}
+{% block title %}New Stock Entry{% endblock %}
+{% block page_title %}New GRN{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'stock_in_list' %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">New Stock Entry (GRN)</span>
+</div>
+
+<form method="post" id="grn-form" novalidate>{% csrf_token %}
+
+<!-- ── GRN Details ── -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">GRN Details</div>
+
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Supplier *</label>
+      <select class="fc fsel" name="supplier" id="grn-supplier" required>
+        <option value="">Select supplier</option>
+        {% for s in suppliers %}<option value="{{ s.pk }}">{{ s.name }}</option>{% endfor %}
+      </select>
+      <div class="field-hint"></div>
+    </div>
+    <div class="fhalf">
+      <label class="fl">Link to PO <span style="font-weight:400;color:var(--tm);">(fills items automatically)</span></label>
+      <select class="fc fsel" name="po" id="po-select">
+        <option value="">— No PO — select to auto-fill</option>
+        {% for p in open_pos %}
+        <option value="{{ p.pk }}"
+          data-supplier="{{ p.supplier_id }}"
+          data-suppliername="{{ p.supplier.name }}"
+          data-advance="{{ p.advance_paid }}">
+          {{ p.po_number }} · {{ p.supplier.name }}{% if p.expected_arrival %} · Due {{ p.expected_arrival }}{% endif %} (₹{{ p.total_value|floatformat:0 }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">GRN Date *</label>
+      <input class="fc" name="date" type="date" required value="{% now 'Y-m-d' %}">
+    </div>
+    <div class="fhalf">
+      <label class="fl">Supplier Invoice No</label>
+      <input class="fc" name="invoice_number" id="grn-invoice" placeholder="Bill / invoice number">
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Vehicle No</label>
+      <input class="fc" name="vehicle_number" id="grn-vehicle" placeholder="KL 01 AB 1234 (optional)">
+    </div>
+    <div class="fhalf">
+      <!-- PO advance info shows here after PO selected -->
+      <div id="po-advance-info" style="display:none;background:#eaf5e8;border:1px solid #c3e6cb;border-radius:8px;padding:10px 14px;margin-top:20px;">
+        <div style="font-size:11px;font-weight:600;color:#2d6a27;margin-bottom:3px;text-transform:uppercase;letter-spacing:.06em;">Advance Already Paid</div>
+        <div id="po-advance-amount" style="font-size:18px;font-weight:700;color:#2d6a27;"></div>
+        <div style="font-size:11px;color:#2d6a27;margin-top:2px;">This will be deducted from the payable balance.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Items Received ── -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <span style="font-size:13px;font-weight:600;color:var(--ts);">Items Received</span>
+      <div style="font-size:11px;color:var(--tm);margin-top:2px;">
+        Enter in <strong>sqft</strong> or <strong>pieces</strong> — rate is always ₹ per sqft
+      </div>
+    </div>
+    <button type="button" class="add-item-btn" id="add-grn-item"><i class="bi bi-plus"></i> Add Item</button>
+  </div>
+
+  <div id="si-items"></div>
+
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+    <span style="font-size:13px;color:var(--tm);">Items Subtotal</span>
+    <span id="si-items-total" style="font-weight:600;">₹0</span>
+  </div>
+</div>
+
+<!-- ── Landing Expenses ── -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+    <div>
+      <span style="font-size:13px;font-weight:600;color:var(--ts);">Landing Expenses</span>
+      <div style="font-size:11px;color:var(--tm);margin-top:2px;">Transport, labour, forklift — apportioned into landed cost per sqft</div>
+    </div>
+    <button type="button" class="add-item-btn" id="add-exp-btn"><i class="bi bi-plus"></i> Add Expense</button>
+  </div>
+  <div id="exp-rows"></div>
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+    <span style="font-size:13px;color:var(--tm);">Landing Expenses Total</span>
+    <span id="exp-total" style="font-weight:600;color:#b33a36;">₹0</span>
+  </div>
+</div>
+
+<!-- ── Grand Total ── -->
+<div class="cv" style="margin-bottom:14px;background:var(--wood-100);border-color:var(--wood-200);">
+  <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:flex-end;">
+    <div style="text-align:right;">
+      <div style="font-size:11px;color:var(--tm);text-transform:uppercase;margin-bottom:2px;">Items</div>
+      <div id="summary-items" style="font-weight:600;">₹0</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:11px;color:var(--tm);text-transform:uppercase;margin-bottom:2px;">+ Landing</div>
+      <div id="summary-exp" style="font-weight:600;">₹0</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:11px;color:var(--tm);text-transform:uppercase;margin-bottom:2px;">= Total Landed Cost</div>
+      <div id="si-total" style="font-size:20px;font-weight:700;font-family:'Fraunces',serif;color:var(--wood-800);">₹0</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Payment ── -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">Payment on Delivery</div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Amount Paid Now (₹)</label>
+      <input class="fc" name="amount_paid" type="number" step="0.01" min="0" placeholder="0" oninput="calcBalance()">
+    </div>
+    <div class="fhalf">
+      <label class="fl">Payment Mode</label>
+      <select class="fc fsel" name="payment_mode">
+        <option value="credit">Credit (Pay Later)</option>
+        <option value="cash">Cash</option>
+        <option value="bank">Bank Transfer</option>
+        <option value="cheque">Cheque</option>
+        <option value="upi">UPI</option>
+      </select>
+    </div>
+  </div>
+  <div id="balance-row" style="display:none;justify-content:space-between;padding:10px 12px;background:var(--body-bg);border-radius:8px;font-size:13px;margin-top:8px;">
+    <span style="color:var(--tm);">Balance Payable</span>
+    <span id="balance-amt" style="font-weight:600;color:#b33a36;"></span>
+  </div>
+  <div class="frow" style="margin-top:14px;">
+    <div class="ffull">
+      <label class="fl">Notes</label>
+      <input class="fc" name="notes" placeholder="Optional">
+    </div>
+  </div>
+</div>
+
+<div class="fp-actions">
+  <a class="bs" href="{% url 'stock_in_list' %}">Cancel</a>
+  <button class="bw" type="submit" id="grn-submit"><i class="bi bi-check2"></i> Save GRN</button>
+</div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+{% include "godown/unit_converter_js.html" %}
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery-validation@1.19.5/dist/jquery.validate.min.js"></script>
+<script>
+const PRODUCTS    = [{% for p in products %}{id:{{ p.pk }},name:"{{ p }}",sl:{{ p.sheet_length }},sw:{{ p.sheet_width }}},{% endfor %}];
+const EXP_CATS    = [{% for val, label in landing_categories %}['{{ val }}','{{ label }}'],{% endfor %}];
+let grnCount = 0, expCount = 0;
+
+// ─────────────────────────────────────────────────────────────────
+// LINE ITEM HTML
+// ─────────────────────────────────────────────────────────────────
+function grnItemHTML(n) {
+  const opts = PRODUCTS.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  return `
+  <div class="line-item" data-li="${n}" style="margin-bottom:12px;align-items:flex-start;">
+    <div class="li-num" style="margin-top:30px;">${n}</div>
+    <div style="flex:1;min-width:0;">
+
+      <!-- Row 1: Product + Unit -->
+      <div class="frow">
+        <div class="fhalf">
+          <label class="fl">Product *</label>
+          <select class="fc fsel li-product" name="product[]" onchange="onProductChange(this)">
+            <option value="">Select product</option>${opts}
+          </select>
+          <div class="product-stock-info" style="font-size:11px;color:var(--tm);margin-top:3px;min-height:14px;"></div>
+        </div>
+        <div class="fhalf">
+          <label class="fl">Purchase Unit</label>
+          <select class="fc fsel unit-sel" onchange="onUnitChange(this)">
+            <option value="sqft">Square Feet (sqft)</option>
+            <option value="pcs">Pieces (nos)</option>
+          </select>
+          <input type="hidden" name="qty_unit[]" value="sqft">
+        </div>
+      </div>
+
+      <!-- Sqft mode -->
+      <div class="sqft-section frow">
+        <div class="fhalf">
+          <label class="fl">Quantity (sqft) *</label>
+          <input class="fc sqft-input" type="number" step="0.01" min="0.01" placeholder="0.00"
+                 oninput="onSqftInput(this)">
+          <input type="hidden" name="qty_sqft[]" value="">
+        </div>
+        <div class="fhalf">
+          <label class="fl">Rack Location</label>
+          <input class="fc" name="rack[]" placeholder="e.g. Rack A-1">
+        </div>
+      </div>
+
+      <!-- Pieces mode -->
+      <div class="pcs-section frow" style="display:none;">
+        <div class="fthird">
+          <label class="fl">Pieces *</label>
+          <input class="fc li-pieces" name="pieces[]" type="number" step="1" min="1" placeholder="0"
+                 oninput="calcSqft(getLI(this))">
+        </div>
+        <div class="fthird">
+          <label class="fl">Length (ft) *</label>
+          <input class="fc li-len" name="sheet_length[]" type="number" step="0.01" min="0.01" placeholder="8"
+                 oninput="calcSqft(getLI(this))">
+        </div>
+        <div class="fthird">
+          <label class="fl">Width (ft) *</label>
+          <input class="fc li-wid" name="sheet_width[]" type="number" step="0.01" min="0.01" placeholder="4"
+                 oninput="calcSqft(getLI(this))">
+        </div>
+      </div>
+      <div class="pcs-section frow" style="display:none;">
+        <div class="fhalf">
+          <label class="fl">Rack Location</label>
+          <input class="fc" name="rack[]" placeholder="Rack A-1">
+        </div>
+        <div class="fhalf">
+          <label class="fl">= Calculated Sqft</label>
+          <div class="fc qty-calc" style="background:#f0ebe3;display:flex;align-items:center;
+               min-height:42px;font-size:13px;padding:10px 12px;color:var(--tm);">
+            Fill pieces and dimensions above
+          </div>
+          <input type="hidden" name="qty_sqft[]" value="">
+        </div>
+      </div>
+
+      <!-- Rate — always visible -->
+      <div class="frow">
+        <div class="fhalf">
+          <label class="fl">Rate (₹ per sqft) *</label>
+          <input class="fc li-rate" name="rate_per_sqft[]" type="number" step="0.01" min="0.01"
+                 placeholder="0.00" oninput="calcLineAmount(getLI(this))">
+        </div>
+        <div class="fhalf">
+          <label class="fl">Line Amount (₹)</label>
+          <input class="fc li-amt" readonly placeholder="auto" style="background:#f0ebe3;font-weight:600;">
+        </div>
+      </div>
+
+    </div><!-- /flex body -->
+    <button type="button" class="li-del" onclick="removeGRNItem(this)"
+            style="display:none;margin-top:28px;flex-shrink:0;">
+      <i class="bi bi-trash3"></i>
+    </button>
+  </div>`;
+}
+
+function addGRNItem() {
+  grnCount++;
+  document.getElementById('si-items').insertAdjacentHTML('beforeend', grnItemHTML(grnCount));
+  _refreshDelBtns();
+}
+
+function removeGRNItem(btn) {
+  btn.closest('.line-item').remove();
+  // renumber
+  document.querySelectorAll('#si-items .line-item').forEach((li, i) => {
+    const num = li.querySelector('.li-num');
+    if (num) num.textContent = i + 1;
+  });
+  _refreshDelBtns();
+  calcGrandTotal();
+}
+
+function _refreshDelBtns() {
+  const items = document.querySelectorAll('#si-items .line-item');
+  items.forEach(li => {
+    const btn = li.querySelector('.li-del');
+    if (btn) btn.style.display = items.length > 1 ? 'flex' : 'none';
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────
+// EXPENSE ROW HTML
+// ─────────────────────────────────────────────────────────────────
+function addExpRow() {
+  expCount++;
+  const opts = EXP_CATS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  const row = `
+  <div class="line-item" style="margin-bottom:10px;align-items:flex-start;">
+    <div style="flex:1;min-width:0;">
+      <div class="frow">
+        <div class="fthird">
+          <label class="fl">Category *</label>
+          <select class="fc fsel" name="exp_cat[]" required>${opts}</select>
+        </div>
+        <div class="fthird">
+          <label class="fl">Amount (₹) *</label>
+          <input class="fc" name="exp_amt[]" type="number" step="0.01" min="0.01"
+                 placeholder="0" oninput="calcExpTotal()" required>
+        </div>
+        <div class="fthird">
+          <label class="fl">Paid To</label>
+          <input class="fc" name="exp_paid_to[]" placeholder="Person / company">
+        </div>
+      </div>
+      <div class="frow">
+        <div class="ffull">
+          <label class="fl">Description</label>
+          <input class="fc" name="exp_desc[]" placeholder="Brief note (optional)">
+        </div>
+      </div>
+    </div>
+    <button type="button" class="li-del"
+            onclick="this.closest('.line-item').remove(); calcExpTotal();"
+            style="display:flex;margin-top:28px;flex-shrink:0;">
+      <i class="bi bi-trash3"></i>
+    </button>
+  </div>`;
+  document.getElementById('exp-rows').insertAdjacentHTML('beforeend', row);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// TOTALS
+// ─────────────────────────────────────────────────────────────────
+function calcExpTotal() {
+  let t = 0;
+  document.querySelectorAll('[name="exp_amt[]"]').forEach(i => { t += parseFloat(i.value || 0) || 0; });
+  const fmt = v => '₹' + v.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  document.getElementById('exp-total').textContent    = fmt(t);
+  document.getElementById('summary-exp').textContent  = fmt(t);
+  calcGrandTotal();
+}
+
+function calcGrandTotal() {
+  let items = 0, exp = 0;
+  document.querySelectorAll('#si-items .li-amt').forEach(a => {
+    items += parseFloat((a.value || '0').replace(/,/g, '')) || 0;
+  });
+  document.querySelectorAll('[name="exp_amt[]"]').forEach(i => {
+    exp += parseFloat(i.value || 0) || 0;
+  });
+  const total = items + exp;
+  const fmt = v => '₹' + v.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  document.getElementById('si-items-total').textContent = fmt(items);
+  document.getElementById('summary-items').textContent  = fmt(items);
+  document.getElementById('si-total').textContent       = fmt(total);
+  calcBalance(total);
+}
+
+window.updateGrandTotal = calcGrandTotal;
+
+function calcBalance(total) {
+  if (total === undefined) { calcGrandTotal(); return; }
+  const paid = parseFloat(document.querySelector('[name="amount_paid"]')?.value || 0) || 0;
+  const bal  = total - paid;
+  const row  = document.getElementById('balance-row');
+  if (paid > 0 || total > 0) {
+    row.style.display = 'flex';
+    document.getElementById('balance-amt').textContent =
+      '₹' + Math.max(0, bal).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// PO AUTO-POPULATE — fills ALL fields from PO data
+// ─────────────────────────────────────────────────────────────────
+document.getElementById('po-select').addEventListener('change', async function () {
+  const poId = this.value;
+
+  // Clear advance info if deselected
+  if (!poId) {
+    document.getElementById('po-advance-info').style.display = 'none';
+    return;
+  }
+
+  const confirmed = await vp.confirm(
+    'Load items from this Purchase Order?\nCurrent items will be replaced.',
+    'Load PO Items',
+    'info'
+  );
+  if (!confirmed) {
+    this.value = '';
+    document.getElementById('po-advance-info').style.display = 'none';
+    return;
+  }
+
+  try {
+    const r    = await fetch('/api/po/' + poId + '/items/');
+    const data = await r.json();
+
+    // Handle: all items already received
+    if (data.all_received) {
+      await vp.alert(
+        data.po_number + ' has already been fully received. No pending items remain.',
+        'PO Fully Received', 'info'
+      );
+      this.value = '';
+      return;
+    }
+
+    // 1. Auto-set supplier
+    const supSel = document.getElementById('grn-supplier');
+    for (const opt of supSel.options) {
+      if (opt.value == data.supplier_id) { opt.selected = true; break; }
+    }
+
+    // 2. Show advance info
+    const selectedOpt = this.options[this.selectedIndex];
+    const advance     = parseFloat(selectedOpt.dataset.advance) || 0;
+    if (advance > 0) {
+      document.getElementById('po-advance-info').style.display = 'block';
+      document.getElementById('po-advance-amount').textContent =
+        '₹' + advance.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    } else {
+      document.getElementById('po-advance-info').style.display = 'none';
+    }
+
+    // 3. Clear existing line items
+    document.getElementById('si-items').innerHTML = '';
+    grnCount = 0;
+
+    // 4. Add one row per PENDING PO item (fully received items are excluded by API)
+    for (const item of data.items) {
+      addGRNItem();
+      const li = document.querySelector('#si-items .line-item:last-child');
+
+      // Select product
+      const prodSel = li.querySelector('[name="product[]"]');
+      for (const opt of prodSel.options) {
+        if (parseInt(opt.value) === item.product_id) { opt.selected = true; break; }
+      }
+      await onProductChange(prodSel);
+
+      // Show partial delivery context below product select
+      if (item.is_partial) {
+        const infoEl = li.querySelector('.product-stock-info');
+        if (infoEl) {
+          infoEl.innerHTML =
+            '<span style="color:#a06a10;font-weight:600;">⚡ Partial delivery: ' +
+            item.qty_received.toFixed(2) + ' sqft already received. ' +
+            item.qty_sqft.toFixed(2) + ' sqft pending.</span>';
+        }
+      }
+
+      if (item.qty_unit === 'pcs' && item.pieces) {
+        // Switch to pieces mode with pending piece count
+        const unitSel    = li.querySelector('.unit-sel');
+        const unitHidden = li.querySelector('[name="qty_unit[]"]');
+        unitSel.value    = 'pcs';
+        unitHidden.value = 'pcs';
+        li.querySelectorAll('.pcs-section').forEach(s => s.style.display = '');
+        li.querySelectorAll('.sqft-section').forEach(s => s.style.display = 'none');
+        const pcsEl = li.querySelector('[name="pieces[]"]');
+        const lenEl = li.querySelector('[name="sheet_length[]"]');
+        const widEl = li.querySelector('[name="sheet_width[]"]');
+        if (pcsEl) pcsEl.value = item.pieces;
+        if (lenEl) lenEl.value = item.sheet_length;
+        if (widEl) widEl.value = item.sheet_width;
+        calcSqft(li);
+      } else {
+        // Sqft mode — fill with PENDING qty (not full ordered qty)
+        const sqftVis = li.querySelector('.sqft-input');
+        const sqftHid = li.querySelector('.sqft-section [name="qty_sqft[]"]');
+        if (sqftVis) sqftVis.value = item.qty_sqft.toFixed(2);
+        if (sqftHid) sqftHid.value = item.qty_sqft.toFixed(4);
+      }
+
+      // Rate
+      const rateEl = li.querySelector('[name="rate_per_sqft[]"]');
+      if (rateEl) {
+        rateEl.value = item.rate_per_sqft.toFixed(2);
+        rateEl.dispatchEvent(new Event('input'));
+      }
+      calcLineAmount(li);
+    }
+
+    calcGrandTotal();
+
+    // Build success message — distinguish first vs partial delivery
+    const hasPartial = data.items.some(i => i.is_partial);
+    const msg = hasPartial
+      ? data.items.length + ' pending item(s) loaded from ' + data.po_number +
+        '.\n\nQuantities show REMAINING to be received. Adjust if this delivery is also partial.'
+      : data.items.length + ' item(s) loaded from ' + data.po_number +
+        '.\nCheck quantities and rates before saving.';
+    await vp.success(msg);
+
+  } catch (e) {
+    console.error(e);
+    await vp.error('Could not load PO items. Check your connection and try again.');
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────
+document.getElementById('add-grn-item').onclick = addGRNItem;
+document.getElementById('add-exp-btn').onclick   = addExpRow;
+addGRNItem();
+addGRNItem();
+addExpRow();
+
+// ─────────────────────────────────────────────────────────────────
+// VALIDATION
+// ─────────────────────────────────────────────────────────────────
+function validateGRN() {
+  let errors = [];
+
+  // Supplier
+  if (!document.querySelector('[name="supplier"]').value) {
+    errors.push('Please select a supplier.');
+    document.querySelector('[name="supplier"]').style.borderColor = '#b33a36';
+  }
+
+  // Date
+  if (!document.querySelector('[name="date"]').value) {
+    errors.push('Please enter a GRN date.');
+    document.querySelector('[name="date"]').style.borderColor = '#b33a36';
+  }
+
+  // Line items
+  let hasValidItem = false;
+  let itemErrors   = [];
+  document.querySelectorAll('#si-items .line-item').forEach((li, idx) => {
+    const n       = idx + 1;
+    const pid     = li.querySelector('[name="product[]"]')?.value;
+    const unit    = li.querySelector('.unit-sel')?.value || 'sqft';
+    const rate    = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;
+
+    // Get qty from whichever hidden input has a value
+    let qty = 0;
+    li.querySelectorAll('[name="qty_sqft[]"]').forEach(inp => {
+      const v = parseFloat(inp.value) || 0;
+      if (v > 0) qty = v;
+    });
+
+    if (!pid && qty === 0 && rate === 0) return; // completely empty row — skip silently
+
+    if (!pid) {
+      itemErrors.push(`Item ${n}: Select a product.`);
+      li.querySelector('[name="product[]"]').style.borderColor = '#b33a36';
+    }
+    if (rate <= 0) {
+      itemErrors.push(`Item ${n}: Enter a rate per sqft.`);
+      li.querySelector('[name="rate_per_sqft[]"]').style.borderColor = '#b33a36';
+    }
+
+    if (unit === 'pcs') {
+      // Only read from the VISIBLE pcs-section inputs
+      const visiblePcsSection = Array.from(li.querySelectorAll('.pcs-section'))
+        .find(s => s.style.display !== 'none');
+      const pcsEl = visiblePcsSection?.querySelector('[name="pieces[]"]');
+      const lenEl = visiblePcsSection?.querySelector('[name="sheet_length[]"]');
+      const widEl = visiblePcsSection?.querySelector('[name="sheet_width[]"]');
+      const pcs = parseFloat(pcsEl?.value) || 0;
+      const len = parseFloat(lenEl?.value) || 0;
+      const wid = parseFloat(widEl?.value) || 0;
+      // Also check the calculated qty_sqft hidden value
+      const calcQty = parseFloat(li.querySelector('.pcs-section [name="qty_sqft[]"]')?.value) || 0;
+      if (pcs <= 0) {
+        itemErrors.push(`Item ${n}: Enter number of pieces.`);
+        if (pcsEl) pcsEl.style.borderColor = '#b33a36';
+      }
+      if (len <= 0) {
+        itemErrors.push(`Item ${n}: Enter sheet length (ft).`);
+        if (lenEl) lenEl.style.borderColor = '#b33a36';
+      }
+      if (wid <= 0) {
+        itemErrors.push(`Item ${n}: Enter sheet width (ft).`);
+        if (widEl) widEl.style.borderColor = '#b33a36';
+      }
+      if (pcs > 0 && len > 0 && wid > 0 && pid && rate > 0 && calcQty > 0) hasValidItem = true;
+    } else {
+      const sqftVis = parseFloat(li.querySelector('.sqft-input')?.value) || 0;
+      if (sqftVis <= 0) {
+        itemErrors.push(`Item ${n}: Enter quantity in sqft.`);
+        const sqftEl = li.querySelector('.sqft-input');
+        if (sqftEl) sqftEl.style.borderColor = '#b33a36';
+      }
+      if (sqftVis > 0 && pid && rate > 0) hasValidItem = true;
+    }
+  });
+
+  errors = errors.concat(itemErrors);
+
+  if (!hasValidItem && itemErrors.length === 0) {
+    errors.push('Add at least one item with product, quantity and rate.');
+  }
+
+  // Landing expenses — if a row exists, amount must be > 0
+  document.querySelectorAll('[name="exp_amt[]"]').forEach((inp, idx) => {
+    const amt = parseFloat(inp.value) || 0;
+    if (inp.closest('.line-item') && amt <= 0) {
+      errors.push(`Landing expense ${idx + 1}: Enter an amount.`);
+      inp.style.borderColor = '#b33a36';
+    }
+  });
+
+  return errors;
+}
+
+// Clear red borders on input
+document.getElementById('grn-form').addEventListener('input', function(e) {
+  if (e.target.style.borderColor === 'rgb(179, 58, 54)') {
+    e.target.style.borderColor = '';
+  }
+});
+
+function onGRNCurrencyChange() {
+  const cur = document.getElementById('grn-currency').value;
+  const rateRow = document.getElementById('grn-rate-row');
+  const label = document.getElementById('grn-paid-label');
+  if (cur === 'USD') {
+    rateRow.style.display = '';
+    label.textContent = 'Amount Paid Now (USD $)';
+  } else {
+    rateRow.style.display = 'none';
+    label.textContent = 'Amount Paid Now (₹)';
+    document.getElementById('grn-payment-inr').style.display = 'none';
+  }
+  calcGRNPaymentINR();
+  calcBalance();
+}
+function calcGRNPaymentINR() {
+  const cur  = document.getElementById('grn-currency').value;
+  const el   = document.getElementById('grn-payment-inr');
+  if (cur !== 'USD') { el.style.display = 'none'; return; }
+  const usd  = parseFloat(document.getElementById('grn-amount-paid').value) || 0;
+  const rate = parseFloat(document.getElementById('grn-exchange-rate').value) || 0;
+  const inr  = usd * rate;
+  if (usd > 0 && rate > 0) {
+    el.style.display = '';
+    el.innerHTML = `<strong>$${usd.toFixed(2)} × ₹${rate} = ₹${inr.toLocaleString('en-IN', {maximumFractionDigits:0})}</strong> INR equivalent`;
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+document.getElementById('grn-submit').addEventListener('click', async function(e) {
+  e.preventDefault();
+
+  const errors = validateGRN();
+  if (errors.length > 0) {
+    await vp.alert(errors.join('\n'), 'Please fix these issues', 'warning');
+    return;
+  }
+
+  document.getElementById('grn-form').submit();
+});
+</script>
+{% endblock %}

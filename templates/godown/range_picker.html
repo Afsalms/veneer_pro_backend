@@ -1,0 +1,47 @@
+<div id="range-picker" style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
+  <span style="font-size:11px;font-weight:600;color:var(--ts);text-transform:uppercase;letter-spacing:.06em;margin-right:4px;white-space:nowrap;">Period:</span>
+
+  {% for r_val, r_label in ranges %}
+  <a href="?range={{ r_val }}"
+     style="display:inline-block;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:500;text-decoration:none;white-space:nowrap;
+            {% if range == r_val %}background:var(--wood-800);color:var(--wood-100);{% else %}background:var(--body-bg);color:var(--ts);border:1px solid var(--border);{% endif %}">
+    {{ r_label }}
+  </a>
+  {% endfor %}
+
+  <!-- Custom date range -->
+  <form id="custom-range-form" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+    <input type="date" name="from" id="range-from"
+           value="{{ date_from|date:'Y-m-d' }}"
+           style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;background:var(--body-bg);color:var(--tp);font-family:'DM Sans',sans-serif;height:32px;">
+    <span style="font-size:11px;color:var(--tm);">to</span>
+    <input type="date" name="to" id="range-to"
+           value="{{ date_to|date:'Y-m-d' }}"
+           style="border:1px solid var(--border);border-radius:6px;padding:4px 8px;font-size:12px;background:var(--body-bg);color:var(--tp);font-family:'DM Sans',sans-serif;height:32px;">
+    <button type="submit"
+            style="background:var(--body-bg);border:1px solid var(--border);border-radius:6px;padding:4px 12px;font-size:12px;font-weight:500;cursor:pointer;color:var(--ts);font-family:'DM Sans',sans-serif;height:32px;
+                   {% if range == 'custom' %}background:var(--wood-800);color:var(--wood-100);border-color:var(--wood-800);{% endif %}">
+      Apply
+    </button>
+  </form>
+
+</div>
+
+<script>
+document.getElementById('custom-range-form').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const from = document.getElementById('range-from').value;
+  const to   = document.getElementById('range-to').value;
+  if (!from || !to) return;
+  window.location.href = window.location.pathname + '?range=custom&from=' + from + '&to=' + to;
+});
+// Mark custom active when dates differ from server-rendered values
+document.getElementById('range-from').addEventListener('change', function() {
+  document.getElementById('custom-range-form').querySelector('button').style.background = 'var(--wood-400)';
+  document.getElementById('custom-range-form').querySelector('button').style.color = '#fff';
+});
+document.getElementById('range-to').addEventListener('change', function() {
+  document.getElementById('custom-range-form').querySelector('button').style.background = 'var(--wood-400)';
+  document.getElementById('custom-range-form').querySelector('button').style.color = '#fff';
+});
+</script>

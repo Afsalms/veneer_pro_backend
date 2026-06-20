@@ -1,0 +1,98 @@
+{% extends "godown/base.html" %}
+{% block title %}Lookup Tables{% endblock %}
+{% block page_title %}Lookup Tables{% endblock %}
+{% block topbar_action %}
+  <a class="bw" id="topbar-action" href="{% url 'lookup_add' %}"><i class="bi bi-plus"></i> Add Value</a>
+{% endblock %}
+{% block content %}
+
+<div class="cv" style="margin-bottom:14px;background:var(--body-bg);border-style:dashed;">
+  <div style="display:flex;gap:10px;align-items:flex-start;">
+    <i class="bi bi-info-circle" style="font-size:18px;color:var(--wood-400);margin-top:1px;flex-shrink:0;"></i>
+    <div style="font-size:13px;color:var(--ts);line-height:1.7;">
+      These are the dropdown options your staff sees when adding products, expenses, and GRN entries.
+      You can add new values, edit labels, change the sort order, deactivate ones you don't use, or delete them.
+      <strong>Deactivating</strong> hides a value from future entries but keeps it on existing records.
+    </div>
+  </div>
+</div>
+
+{% for cat, values in grouped.items %}
+<div class="cv" style="margin-bottom:14px;">
+  <div class="ch">
+    <div>
+      <h6>{{ cat.label }}</h6>
+      <div style="font-size:11px;color:var(--tm);margin-top:2px;">
+        {% if cat == 'thickness' %}Used in: Products
+        {% elif cat == 'cut_type' %}Used in: Products
+        {% elif cat == 'finish' %}Used in: Products
+        {% elif cat == 'expense_category' %}Used in: Expenses
+        {% elif cat == 'landing_expense_category' %}Used in: Stock In (GRN) landing expenses
+        {% endif %}
+      </div>
+    </div>
+    <a class="bs" href="{% url 'lookup_add' %}?category={{ cat.value }}" style="font-size:12px;"><i class="bi bi-plus"></i> Add to {{ cat.label }}</a>
+  </div>
+
+  <table class="tv dt">
+    <thead><tr><th>Label (shown in forms)</th><th>Value (stored in DB)</th><th>Sort</th><th>Default</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for v in values %}
+    <tr style="{% if not v.is_active %}opacity:.5;{% endif %}">
+      <td>
+        <span style="font-weight:500;">{{ v.label }}</span>
+        {% if v.is_default %}<span class="bv bg" style="font-size:10px;margin-left:6px;">Default</span>{% endif %}
+      </td>
+      <td><code style="font-size:12px;background:var(--body-bg);padding:2px 6px;border-radius:4px;color:var(--ts);">{{ v.value }}</code></td>
+      <td style="color:var(--tm);">{{ v.sort_order }}</td>
+      <td style="color:{% if v.is_default %}#2d6a27{% else %}var(--tm){% endif %};">{% if v.is_default %}✓ Yes{% else %}—{% endif %}</td>
+      <td>
+        <span class="bv {% if v.is_active %}bg{% else %}bz{% endif %}" style="font-size:10px;">
+          {% if v.is_active %}Active{% else %}Inactive{% endif %}
+        </span>
+      </td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <a class="bs" href="{% url 'lookup_edit' v.pk %}" style="font-size:11px;padding:3px 8px;"><i class="bi bi-pencil"></i></a>
+          <form method="post" action="{% url 'lookup_toggle' v.pk %}" style="display:inline;">{% csrf_token %}
+            <button type="submit" class="bs" style="font-size:11px;padding:3px 8px;" title="{% if v.is_active %}Deactivate{% else %}Activate{% endif %}">
+              <i class="bi bi-{% if v.is_active %}eye-slash{% else %}eye{% endif %}"></i>
+            </button>
+          </form>
+          <form method="post" action="{% url 'lookup_delete' v.pk %}" style="display:inline;" onsubmit="return confirm('Delete {{ v.label }}? This cannot be undone.');">{% csrf_token %}
+            <button type="submit" class="bs" style="font-size:11px;padding:3px 8px;color:#b33a36;border-color:#f5c6cb;"><i class="bi bi-trash3"></i></button>
+          </form>
+        </div>
+      </td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="6" style="color:var(--tm);text-align:center;padding:20px;">No values yet. <a href="{% url 'lookup_add' %}?category={{ cat.value }}">Add one</a></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Mobile -->
+  <div class="ml">
+  {% for v in values %}
+  <div class="mc" style="{% if not v.is_active %}opacity:.5;{% endif %}">
+    <div class="mct">
+      <div>
+        <div class="mcn">{{ v.label }} {% if v.is_default %}<span class="bv bg" style="font-size:9px;">Default</span>{% endif %}</div>
+        <div class="mcs">value: {{ v.value }} · sort: {{ v.sort_order }}</div>
+      </div>
+      <span class="bv {% if v.is_active %}bg{% else %}bz{% endif %}">{% if v.is_active %}Active{% else %}Off{% endif %}</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <a class="bs" href="{% url 'lookup_edit' v.pk %}" style="flex:1;justify-content:center;font-size:12px;"><i class="bi bi-pencil"></i> Edit</a>
+      <form method="post" action="{% url 'lookup_toggle' v.pk %}" style="flex:1;">{% csrf_token %}
+        <button type="submit" class="bs" style="width:100%;justify-content:center;font-size:12px;"><i class="bi bi-{% if v.is_active %}eye-slash{% else %}eye{% endif %}"></i> Toggle</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+
+</div>
+{% endfor %}
+
+{% endblock %}
