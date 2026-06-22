@@ -15,7 +15,7 @@
     <thead>
       <tr>
         <th>Product</th>
-        <th class="right">Stock (sqft)</th>
+        <th class="right">Stock (sq.m)</th>
         <th class="right">Sold (90d)</th>
         <th class="right">Avg/Day</th>
         <th class="right">Days Left</th>
@@ -41,7 +41,7 @@
       </td>
       <td class="right" style="font-weight:600;{% if a.urgency in 'critical,out' %}color:#b33a36;{% elif a.urgency == 'low' %}color:#a06a10;{% endif %}">{{ a.product.stock_qty|floatformat:0 }}</td>
       <td class="right" style="color:var(--tm);">{{ a.sold_90|floatformat:0 }}</td>
-      <td class="right">{{ a.avg_daily }} <span style="font-size:10px;color:var(--tm);">sqft</span></td>
+      <td class="right">{{ a.avg_daily }} <span style="font-size:10px;color:var(--tm);">sq.m</span></td>
       <td class="right">
         {% if a.days_left is not None %}
         <span class="bv {% if a.days_left <= a.alert.lead_days %}br{% elif a.days_left <= 21 %}ba{% else %}bg{% endif %}" style="font-size:11px;">
@@ -50,8 +50,8 @@
         {% else %}<span style="color:var(--tm);font-size:12px;">—</span>{% endif %}
       </td>
       <td class="right" style="color:var(--tm);">{{ a.alert.lead_days }}d</td>
-      <td class="right" style="color:var(--ts);">{{ a.alert.reorder_point|floatformat:0 }} sqft</td>
-      <td class="right" style="font-weight:500;color:var(--wood-600);">{{ a.alert.reorder_qty|floatformat:0 }} sqft</td>
+      <td class="right" style="color:var(--ts);">{{ a.alert.reorder_point|floatformat:0 }} sq.m</td>
+      <td class="right" style="font-weight:500;color:var(--wood-600);">{{ a.alert.reorder_qty|floatformat:0 }} sq.m</td>
       <td>
         {% if a.urgency in 'critical,out' %}
         <a class="bw" href="{% url 'add_po' %}" style="font-size:11px;padding:4px 10px;background:#b33a36;">Order Now</a>
@@ -71,14 +71,14 @@
   {% for a in alerts %}
   <div class="mc" style="{% if a.urgency in 'critical,out' %}border-color:#f5c6cb;{% elif a.urgency == 'low' %}border-color:#fde68a;{% else %}border-color:#c3e6cb;{% endif %}">
     <div class="mct">
-      <div><div class="mcn">{{ a.product.display_name }}</div><div class="mcs">{{ a.product.cut_type }} · Avg {{ a.avg_daily }} sqft/day</div></div>
+      <div><div class="mcn">{{ a.product.display_name }}</div><div class="mcs">{{ a.product.cut_type }} · Avg {{ a.avg_daily }} sq.m/day</div></div>
       <span class="bv {% if a.urgency == 'ok' %}bg{% elif a.urgency == 'low' %}ba{% else %}br{% endif %}">
         {% if a.urgency == 'out' %}Out{% elif a.urgency == 'critical' %}Critical{% elif a.urgency == 'low' %}Low{% else %}OK{% endif %}
       </span>
     </div>
-    <div class="mr"><span class="mrk">Stock</span><span class="mrv" style="{% if a.urgency in 'critical,out' %}color:#b33a36;{% endif %}">{{ a.product.stock_qty|floatformat:0 }} sqft</span></div>
+    <div class="mr"><span class="mrk">Stock</span><span class="mrv" style="{% if a.urgency in 'critical,out' %}color:#b33a36;{% endif %}">{{ a.product.stock_qty|floatformat:0 }} sq.m</span></div>
     {% if a.days_left is not None %}<div class="mr"><span class="mrk">Days of Stock</span><span class="mrv">{{ a.days_left|floatformat:0 }} days</span></div>{% endif %}
-    <div class="mr"><span class="mrk">Reorder at</span><span class="mrv">{{ a.alert.reorder_point|floatformat:0 }} sqft</span></div>
+    <div class="mr"><span class="mrk">Reorder at</span><span class="mrv">{{ a.alert.reorder_point|floatformat:0 }} sq.m</span></div>
     {% if a.urgency in 'critical,out,low' %}<div style="margin-top:10px;"><a class="bw" href="{% url 'add_po' %}" style="width:100%;justify-content:center;{% if a.urgency in 'critical,out' %}background:#b33a36;{% endif %}"><i class="bi bi-plus"></i> Create Purchase Order</a></div>{% endif %}
   </div>
   {% endfor %}

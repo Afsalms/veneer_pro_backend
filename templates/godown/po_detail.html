@@ -34,9 +34,9 @@
   <div class="cv">
     <div class="ch"><h6>Items Ordered</h6></div>
     <table class="tv">
-      <thead><tr><th>Product</th><th>Qty (sqft)</th><th>Rate</th><th>Amount</th></tr></thead>
+      <thead><tr><th>Product</th><th>Qty (sq.m)</th><th>Rate</th><th>Amount</th></tr></thead>
       <tbody>{% for item in po.po_items.all %}
-      <tr><td>{{ item.product }}</td><td>{{ item.qty_display }}</td><td>₹{{ item.rate }}/sqft</td><td style="font-weight:500;">₹{{ item.amount|floatformat:0 }}</td></tr>
+      <tr><td>{{ item.product }}</td><td>{{ item.qty_display }}</td><td>₹{{ item.rate }}/sq\.m</td><td style="font-weight:500;">₹{{ item.amount|floatformat:0 }}</td></tr>
       {% endfor %}</tbody>
     </table>
     <div style="text-align:right;margin-top:10px;font-size:15px;font-weight:700;">Total: ₹{{ po.total_value|floatformat:0 }}</div>
@@ -50,7 +50,7 @@
         <span style="font-weight:600;color:var(--wood-600);">{{ grn.grn_number }}</span>
         <span style="font-size:12px;color:var(--tm);">{{ grn.date }}</span>
       </div>
-      {% for item in grn.items.all %}<div style="font-size:12px;color:var(--ts);">{{ item.product.display_name }} — {{ item.qty|floatformat:0 }} sqft</div>{% endfor %}
+      {% for item in grn.items.all %}<div style="font-size:12px;color:var(--ts);">{{ item.product.display_name }} — {{ item.qty|floatformat:0 }} sq.m</div>{% endfor %}
       {% if grn.landing_expenses.all %}
       <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">
         <div style="font-size:11px;font-weight:600;color:var(--tm);margin-bottom:4px;">LANDING COSTS</div>

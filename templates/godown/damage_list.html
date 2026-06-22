@@ -7,7 +7,7 @@
 
 <!-- Summary -->
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
-  <div class="sc"><div><div class="sl">Total Damaged</div><div class="sv" style="color:#b33a36;">{{ total_qty|floatformat:0 }} sqft</div></div><div class="si ir"><i class="bi bi-exclamation-triangle"></i></div></div>
+  <div class="sc"><div><div class="sl">Total Damaged</div><div class="sv" style="color:#b33a36;">{{ total_qty|floatformat:0 }} sq.m</div></div><div class="si ir"><i class="bi bi-exclamation-triangle"></i></div></div>
   <div class="sc"><div><div class="sl">Total Write-off</div><div class="sv" style="color:#b33a36;">₹{{ total_write_off|floatformat:0 }}</div><div class="sc-change" style="color:var(--tm);">At cost rate</div></div></div>
   <div class="sc"><div><div class="sl">Records</div><div class="sv">{{ damages|length }}</div></div></div>
 </div>
@@ -20,7 +20,7 @@
     {% for cat, data in by_category.items %}
     <div style="background:var(--body-bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;min-width:150px;">
       <div style="font-size:12px;font-weight:600;color:var(--ts);">{{ cat }}</div>
-      <div style="font-size:13px;font-weight:700;color:#b33a36;margin-top:4px;">{{ data.qty|floatformat:0 }} sqft</div>
+      <div style="font-size:13px;font-weight:700;color:#b33a36;margin-top:4px;">{{ data.qty|floatformat:0 }} sq.m</div>
       <div style="font-size:11px;color:var(--tm);">₹{{ data.value|floatformat:0 }} write-off · {{ data.count }} record{{ data.count|pluralize }}</div>
     </div>
     {% endfor %}
@@ -37,7 +37,7 @@
 
   <table class="tv dt">
     <thead>
-      <tr><th>Date</th><th>Product</th><th>GRN Ref</th><th>Category</th><th>Qty (sqft)</th><th>Cost Rate</th><th>Write-off Value</th><th>Description</th><th>By</th><th></th></tr>
+      <tr><th>Date</th><th>Product</th><th>GRN Ref</th><th>Category</th><th>Qty (sq.m)</th><th>Cost Rate</th><th>Write-off Value</th><th>Description</th><th>By</th><th></th></tr>
     </thead>
     <tbody>
     {% for d in damages %}
@@ -49,7 +49,7 @@
         <span class="bv br" style="font-size:10px;">{{ d.get_category_display }}</span>
       </td>
       <td style="color:#b33a36;font-weight:600;">{{ d.qty_sqft|floatformat:2 }}</td>
-      <td style="color:var(--tm);">₹{{ d.cost_rate|floatformat:2 }}/sqft</td>
+      <td style="color:var(--tm);">₹{{ d.cost_rate|floatformat:2 }}/sq\.m</td>
       <td style="font-weight:600;color:#b33a36;">₹{{ d.write_off_value|floatformat:0 }}</td>
       <td style="font-size:12px;color:var(--tm);">{{ d.description|default:"—"|truncatechars:40 }}</td>
       <td style="font-size:11px;color:var(--tm);">{{ d.reported_by.get_full_name|default:d.reported_by.username }}</td>
@@ -80,7 +80,7 @@
       </div>
       <span class="bv br" style="font-size:10px;">{{ d.get_category_display }}</span>
     </div>
-    <div class="mr"><span class="mrk">Qty Damaged</span><span class="mrv" style="color:#b33a36;font-weight:600;">{{ d.qty_sqft|floatformat:2 }} sqft</span></div>
+    <div class="mr"><span class="mrk">Qty Damaged</span><span class="mrv" style="color:#b33a36;font-weight:600;">{{ d.qty_sqft|floatformat:2 }} sq.m</span></div>
     <div class="mr"><span class="mrk">Write-off</span><span class="mrv" style="color:#b33a36;font-weight:600;">₹{{ d.write_off_value|floatformat:0 }}</span></div>
     {% if d.description %}<div class="mr"><span class="mrk">Note</span><span class="mrv">{{ d.description }}</span></div>{% endif %}
   </div>

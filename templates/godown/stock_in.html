@@ -9,12 +9,12 @@
 <div class="cv" style="margin-bottom:14px;">
   <div class="ch"><h6>Current Inventory</h6></div>
   <table class="tv dt">
-    <thead><tr><th>Product</th><th>Stock (sqft)</th><th>Avg Cost</th><th>Stock Value</th><th>Status</th></tr></thead>
+    <thead><tr><th>Product</th><th>Stock (sq.m)</th><th>Avg Cost</th><th>Stock Value</th><th>Status</th></tr></thead>
     <tbody>{% for p in inventory %}
     <tr>
       <td style="font-weight:500;">{{ p.display_name }}</td>
       <td>{{ p.stock_qty|floatformat:2 }}</td>
-      <td style="color:var(--tm);">₹{{ p.avg_cost|floatformat:2 }}/sqft</td>
+      <td style="color:var(--tm);">₹{{ p.avg_cost|floatformat:2 }}/sq\.m</td>
       <td>₹{{ p.stock_value|floatformat:0 }}</td>
       <td><span class="bv {% if p.stock_status == 'ok' %}bg{% elif p.stock_status == 'low' %}ba{% else %}br{% endif %}">{{ p.stock_status|title }}</span></td>
     </tr>{% endfor %}</tbody>
@@ -52,7 +52,7 @@
       <div><div class="mcn">{{ g.supplier.name }}</div><div class="mcs">{{ g.grn_number }} · {{ g.date }}</div></div>
       {% if g.balance > 0 %}<span class="bv br">₹{{ g.balance|floatformat:0 }} due</span>{% else %}<span class="bv bg">Paid</span>{% endif %}
     </div>
-    {% for item in g.items.all %}<div class="mr"><span class="mrk">{{ item.product.display_name }}</span><span class="mrv">{{ item.qty_display }} @ ₹{{ item.rate_per_sqft }}/sqft</span></div>{% endfor %}
+    {% for item in g.items.all %}<div class="mr"><span class="mrk">{{ item.product.display_name }}</span><span class="mrv">{{ item.qty_display }} @ ₹{{ item.rate_per_sq.m }}/sq\.m</span></div>{% endfor %}
     {% if g.po %}<div class="mr"><span class="mrk">PO Ref</span><span class="mrv">{{ g.po.po_number }}</span></div>{% endif %}
     <div class="mr"><span class="mrk">Total</span><span class="mrv" style="font-weight:600;">₹{{ g.total_amount|floatformat:0 }}</span></div>
   </div>{% endfor %}

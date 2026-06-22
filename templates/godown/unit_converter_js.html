@@ -1,5 +1,24 @@
 {# Shared unit conversion JS — include in {% block extra_js %} #}
 <script>
+/**
+ * UNIT SYSTEM
+ * -----------
+ * DB stores everything in SQFT (field names: qty_sqft, rate_per_sqft, etc.)
+ * User sees and types everything in SQ.M
+ *
+ * Conversion: 1 sqft = 0.0929 sq.m  →  1 sq.m = 10.764 sqft
+ *
+ * Rules:
+ *   Display sqft value  → multiply by SQFT_TO_SQM
+ *   User enters sq.m    → divide by SQFT_TO_SQM before storing
+ *   Length/width stay in FEET (unchanged) — sheet area converts automatically
+ */
+const SQFT_TO_SQM = 0.0929;
+const SQM_TO_SQFT = 1 / SQFT_TO_SQM;  // ≈ 10.764
+
+function sqftToSqm(v) { return v * SQFT_TO_SQM; }
+function sqmToSqft(v) { return v * SQM_TO_SQFT; }
+
 const PRODUCT_CACHE = {};
 
 async function fetchProduct(pid) {
@@ -15,32 +34,29 @@ async function fetchProduct(pid) {
 function getLI(el) { return el.closest('.line-item'); }
 
 /**
- * calcSqft — reads pieces/length/width, writes to the hidden qty_sqft[] input
- * inside .pcs-section, then calls calcLineAmount.
- * Rate field is OUTSIDE both sections — always visible, always one copy.
+ * calcSqft — called when pieces / sheet dims change.
+ * length × width in FEET → sqft → convert to sq.m for display.
+ * Hidden qty_sqft[] field gets the SQFT value (for DB).
  */
 function calcSqft(li) {
-  const pcs = parseFloat(li.querySelector('[name="pieces[]"]')?.value) || 0;
-  const len = parseFloat(li.querySelector('[name="sheet_length[]"]')?.value) || 0;
-  const wid = parseFloat(li.querySelector('[name="sheet_width[]"]')?.value) || 0;
-  const sqft = pcs * len * wid;
+  const pcs  = parseFloat(li.querySelector('[name="pieces[]"]')?.value) || 0;
+  const len  = parseFloat(li.querySelector('[name="sheet_length[]"]')?.value) || 0;
+  const wid  = parseFloat(li.querySelector('[name="sheet_width[]"]')?.value) || 0;
+  const sqft = pcs * len * wid;          // area in sqft
+  const sqm  = sqftToSqm(sqft);          // area in sq.m for display
 
-  // Write to the hidden qty_sqft[] inside pcs-section
-  // (there's also one in sqft-section — we only want the pcs one)
-  const pcsSection = li.querySelector('.pcs-section[style*="none"] + .pcs-section, .pcs-section');
-  // Simpler: get ALL hidden qty_sqft inputs, update the one that's in a visible pcs-section
+  // Store sqft in hidden field (DB column)
   li.querySelectorAll('[name="qty_sqft[]"]').forEach(inp => {
-    // Only update if this input is inside a pcs-section (or is the standalone hidden one)
     if (!inp.closest('.sqft-section')) {
       inp.value = sqft > 0 ? sqft.toFixed(4) : '';
     }
   });
 
-  // Update display
+  // Show sq.m to user
   const disp = li.querySelector('.qty-calc');
   if (disp) {
     if (pcs && len && wid) {
-      disp.textContent = `${pcs} pcs × ${len}×${wid} ft = ${sqft.toFixed(2)} sqft`;
+      disp.textContent = `${pcs} pcs × ${len}×${wid} ft = ${sqm.toFixed(4)} sq.m`;
       disp.style.color = 'var(--wood-600)';
     } else {
       disp.textContent = 'Fill pieces and dimensions above';
@@ -51,18 +67,16 @@ function calcSqft(li) {
 }
 
 /**
- * calcLineAmount — reads qty_sqft (whichever is filled) and rate_per_sqft (single field).
- * Rate field is always outside sections so querySelector always finds it.
+ * calcLineAmount — amount = qty_sqft (hidden) × rate_per_sqft (hidden).
+ * Both are stored as sqft-based values in DB so the math is direct.
+ * User enters qty in sq.m → we store sqft. Rate entered per sq.m → stored per sqft.
  */
 function calcLineAmount(li) {
-  // Get qty — prefer the hidden input that has a value
   let sqft = 0;
   li.querySelectorAll('[name="qty_sqft[]"]').forEach(inp => {
     const v = parseFloat(inp.value) || 0;
     if (v > 0) sqft = v;
   });
-
-  // Rate — single field, always visible
   const rate = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;
   const amt  = sqft * rate;
   const amtEl = li.querySelector('.li-amt');
@@ -85,7 +99,6 @@ async function onUnitChange(sel) {
   const li   = getLI(sel);
   const unit = sel.value;
 
-  // Update hidden unit field
   const unitHidden = li.querySelector('[name="qty_unit[]"]');
   if (unitHidden) unitHidden.value = unit;
 
@@ -95,10 +108,8 @@ async function onUnitChange(sel) {
   if (unit === 'pcs') {
     sqftSections.forEach(s => s.style.display = 'none');
     pcsSections.forEach(s => s.style.display = '');
-    // Clear the sqft-section hidden input so it doesn't submit stale value
     li.querySelectorAll('.sqft-section [name="qty_sqft[]"]').forEach(inp => inp.value = '');
 
-    // Auto-fill sheet dims from product
     const pid = li.querySelector('[name="product[]"]')?.value;
     if (pid) {
       const prod = await fetchProduct(pid);
@@ -113,12 +124,13 @@ async function onUnitChange(sel) {
   } else {
     pcsSections.forEach(s => s.style.display = 'none');
     sqftSections.forEach(s => s.style.display = '');
-    // Clear pcs hidden inputs
     li.querySelectorAll('.pcs-section [name="qty_sqft[]"]').forEach(inp => inp.value = '');
-    // Sync visible sqft input → hidden
-    const sqftVisible = li.querySelector('.sqft-input');
-    const sqftHidden  = li.querySelector('.sqft-section [name="qty_sqft[]"]');
-    if (sqftVisible && sqftHidden) sqftHidden.value = sqftVisible.value;
+    // Visible input in sqft-mode is entered by user in sq.m → convert to sqft for hidden field
+    const sqmVisible = li.querySelector('.sqft-input');
+    const sqftHidden = li.querySelector('.sqft-section [name="qty_sqft[]"]');
+    if (sqmVisible && sqftHidden && sqmVisible.value) {
+      sqftHidden.value = sqmToSqft(parseFloat(sqmVisible.value)).toFixed(4);
+    }
     calcLineAmount(li);
   }
 }
@@ -129,7 +141,7 @@ async function onProductChange(sel) {
   if (!pid) return;
   const prod = await fetchProduct(pid);
   if (!prod) return;
-  // Set placeholders
+
   const lenEl = li.querySelector('[name="sheet_length[]"]');
   const widEl = li.querySelector('[name="sheet_width[]"]');
   if (lenEl) lenEl.placeholder = prod.sheet_length;
@@ -142,17 +154,25 @@ async function onProductChange(sel) {
     calcSqft(li);
   }
 
-  // Show stock info
+  // Show stock in sq.m
   const info = li.querySelector('.product-stock-info');
-  if (info) info.textContent =
-    `Stock: ${prod.stock_qty.toFixed(0)} sqft  |  Sheet: ${prod.sheet_length}×${prod.sheet_width} ft (${prod.sheet_sqft.toFixed(2)} sqft/sheet)`;
+  if (info) {
+    const stockSqm = sqftToSqm(prod.stock_qty).toFixed(2);
+    const sheetSqm = sqftToSqm(prod.sheet_sqft).toFixed(4);
+    info.textContent =
+      `Stock: ${stockSqm} sq.m  |  Sheet: ${prod.sheet_length}×${prod.sheet_width} ft = ${sheetSqm} sq.m/sheet`;
+  }
 }
 
+// Called when user types in the visible sqft-section input (which is now sq.m)
 function onSqftInput(inp) {
   const li = getLI(inp);
-  // Sync visible input → hidden qty_sqft in sqft-section
   const hidden = li.querySelector('.sqft-section [name="qty_sqft[]"]');
-  if (hidden) hidden.value = inp.value;
+  // User types sq.m → convert to sqft for DB
+  if (hidden) {
+    const sqm  = parseFloat(inp.value) || 0;
+    hidden.value = sqm > 0 ? sqmToSqft(sqm).toFixed(4) : '';
+  }
   calcLineAmount(li);
 }
 

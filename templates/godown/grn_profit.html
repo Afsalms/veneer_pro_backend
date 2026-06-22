@@ -46,7 +46,7 @@
       <!-- Sold bar -->
       <div style="min-width:80px;text-align:right;">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--tm);margin-bottom:4px;">Qty Sold</div>
-        <div style="font-size:12px;font-weight:600;margin-bottom:4px;">{{ report.total_sold|floatformat:0 }} / {{ report.total_qty|floatformat:0 }} sqft</div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:4px;">{{ report.total_sold|floatformat:0 }} / {{ report.total_qty|floatformat:0 }} sq.m</div>
         <div class="pv" style="height:8px;border-radius:5px;">
           <div class="pf" style="width:{{ report.pct_sold }}%;background:{% if report.pct_sold == 100 %}#2d6a27{% else %}var(--wood-400){% endif %};"></div>
         </div>
@@ -66,18 +66,18 @@
           {% if item.status == 'sold_out' %}Fully Sold{% elif item.status == 'partial' %}Partially Sold{% else %}Unsold{% endif %}
         </span>
       </div>
-      <div style="font-size:12px;color:var(--tm);">{{ item.grn_qty|floatformat:0 }} sqft received · {{ item.qty_sold|floatformat:0 }} sold · {{ item.qty_remaining|floatformat:0 }} remaining</div>
+      <div style="font-size:12px;color:var(--tm);">{{ item.grn_qty|floatformat:0 }} sq.m received · {{ item.qty_sold|floatformat:0 }} sold · {{ item.qty_remaining|floatformat:0 }} remaining</div>
     </div>
 
     <!-- Cost vs Sale comparison -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:10px;">
       <div style="background:var(--body-bg);border-radius:8px;padding:10px 12px;">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin-bottom:4px;">Buy Rate</div>
-        <div style="font-size:14px;font-weight:600;">₹{{ item.grn_rate }}/sqft</div>
+        <div style="font-size:14px;font-weight:600;">₹{{ item.grn_rate }}/sq\.m</div>
       </div>
       <div style="background:#fef6e4;border-radius:8px;padding:10px 12px;">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin-bottom:4px;">Landed Rate (incl. expenses)</div>
-        <div style="font-size:14px;font-weight:600;color:#a06a10;">₹{{ item.landed_rate|floatformat:2 }}/sqft</div>
+        <div style="font-size:14px;font-weight:600;color:#a06a10;">₹{{ item.landed_rate|floatformat:2 }}/sq\.m</div>
       </div>
       <div style="background:#eaf5e8;border-radius:8px;padding:10px 12px;">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin-bottom:4px;">Revenue Realised</div>
@@ -106,7 +106,7 @@
               <th>Bill No</th>
               <th>Customer</th>
               <th>Date</th>
-              <th>Qty (sqft)</th>
+              <th>Qty (sq.m)</th>
               <th>Sale Rate</th>
               <th>Revenue</th>
               <th>COGS</th>
@@ -121,7 +121,7 @@
             <td>{{ sale.customer }}</td>
             <td style="color:var(--tm);">{{ sale.date }}</td>
             <td>{{ sale.qty|floatformat:0 }}</td>
-            <td>₹{{ sale.rate }}/sqft</td>
+            <td>₹{{ sale.rate }}/sq\.m</td>
             <td style="font-weight:500;color:#2d6a27;">₹{{ sale.revenue|floatformat:0 }}</td>
             <td style="color:var(--tm);">₹{{ sale.cogs|floatformat:0 }}</td>
             <td style="font-weight:600;color:{% if sale.profit >= 0 %}#2d6a27{% else %}#b33a36{% endif %};">

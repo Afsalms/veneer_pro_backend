@@ -79,7 +79,7 @@
     </div>
   </div>
   <div style="margin-top:12px;padding:10px 14px;background:var(--wood-100);border-radius:8px;font-size:12px;color:var(--wood-800);line-height:1.7;">
-    <strong>GST tip:</strong> Buy Teak @ ₹32 → pay 12% = ₹3.84 ITC. Sell @ ₹45 → collect 12% = ₹5.40. Pay govt only ₹5.40 − ₹3.84 = <strong>₹1.56</strong> per sqft.
+    <strong>GST tip:</strong> Buy Teak @ ₹32 → pay 12% = ₹3.84 ITC. Sell @ ₹45 → collect 12% = ₹5.40. Pay govt only ₹5.40 − ₹3.84 = <strong>₹1.56</strong> per sq.m.
   </div>
 </div>
 
@@ -89,7 +89,7 @@
     <div class="ch"><h6><i class="bi bi-exclamation-triangle" style="color:#c49a3c;"></i> Low Stock</h6><span class="bv ba">{{ low_stock|length }} items</span></div>
     {% for p in low_stock %}
     <div class="progress-row">
-      <div class="progress-row-head"><span style="font-weight:500;">{{ p.display_name }}</span><span style="font-size:12px;color:var(--tm);">{{ p.stock_qty|floatformat:0 }}/{{ p.min_stock|floatformat:0 }} sqft</span></div>
+      <div class="progress-row-head"><span style="font-weight:500;">{{ p.display_name }}</span><span style="font-size:12px;color:var(--tm);">{{ p.stock_qty|floatformat:0 }}/{{ p.min_stock|floatformat:0 }} sq.m</span></div>
       <div class="pv"><div class="pf" style="width:{% widthratio p.stock_qty p.min_stock 100 %}%;background:{% if p.stock_status == 'critical' %}#c0392b{% else %}#e57c10{% endif %};"></div></div>
     </div>
     {% empty %}<p style="color:var(--tm);font-size:13px;">All products adequately stocked.</p>{% endfor %}

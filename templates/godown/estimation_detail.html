@@ -46,14 +46,14 @@
 <div class="cv" style="margin-bottom:14px;">
   <div class="ch"><h6>Items</h6></div>
   <table class="tv">
-    <thead><tr><th>#</th><th>Product / Description</th><th class="right">Qty (sqft)</th><th class="right">Rate (₹/sqft)</th><th class="right">Amount (₹)</th></tr></thead>
+    <thead><tr><th>#</th><th>Product / Description</th><th class="right">Qty (sq.m)</th><th class="right">Rate (₹/sq\.m)</th><th class="right">Amount (₹)</th></tr></thead>
     <tbody>
     {% for item in est.est_items.all %}
     <tr>
       <td style="color:var(--tm);">{{ forloop.counter }}</td>
       <td style="font-weight:500;">{{ item.display_desc }}{% if item.pieces %}<div style="font-size:11px;color:var(--tm);">{{ item.pieces|floatformat:0 }} pcs × {{ item.sheet_length }}×{{ item.sheet_width }} ft</div>{% endif %}</td>
       <td style="text-align:right;">{{ item.qty_sqft|floatformat:2 }}</td>
-      <td style="text-align:right;">₹{{ item.rate_per_sqft }}</td>
+      <td style="text-align:right;">₹{{ item.rate_per_sq.m }}</td>
       <td style="text-align:right;font-weight:600;">₹{{ item.amount|floatformat:0 }}</td>
     </tr>
     {% endfor %}
@@ -95,7 +95,7 @@ function buildWAText() {
 
   const items = [
     {% for item in est.est_items.all %}
-    { desc: "{{ item.display_desc|escapejs }}", qty: {{ item.qty_sqft }}, rate: {{ item.rate_per_sqft }}, amount: {{ item.amount }} },
+    { desc: "{{ item.display_desc|escapejs }}", qty: {{ item.qty_sq.m }}, rate: {{ item.rate_per_sq.m }}, amount: {{ item.amount }} },
     {% endfor %}
   ];
 
@@ -113,7 +113,7 @@ function buildWAText() {
   msg += `\n`;
   msg += `*ITEMS:*\n`;
   items.forEach((item, i) => {
-    msg += `${i+1}. ${item.desc} — ${parseFloat(item.qty).toFixed(2)} sqft @ ₹${item.rate}/sqft = *₹${Math.round(item.amount).toLocaleString('en-IN')}*\n`;
+    msg += `${i+1}. ${item.desc} — ${parseFloat(item.qty).toFixed(2)} sq.m @ ₹${item.rate}/sq\.m = *₹${Math.round(item.amount).toLocaleString('en-IN')}*\n`;
   });
   msg += `\n`;
   msg += `Subtotal: ₹${Math.round(subtotal).toLocaleString('en-IN')}\n`;

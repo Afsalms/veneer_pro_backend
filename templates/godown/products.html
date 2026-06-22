@@ -13,8 +13,8 @@
     <div style="padding:12px;">
       <div style="font-weight:600;font-size:13px;">{{ p.species }} {{ p.thickness }}</div>
       <div style="font-size:11px;color:var(--tm);margin-bottom:8px;">{{ p.cut_type }} · {{ p.finish }}</div>
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:var(--ts);">Stock</span><span style="font-weight:600;{% if p.stock_status == 'critical' %}color:#b33a36;{% endif %}">{{ p.stock_qty|floatformat:0 }} sqft</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px;"><span style="color:var(--ts);">Sale Rate</span><span style="font-weight:600;color:var(--wood-600);">₹{{ p.sale_rate }}/sqft</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:var(--ts);">Stock</span><span style="font-weight:600;{% if p.stock_status == 'critical' %}color:#b33a36;{% endif %}">{{ p.stock_qty|floatformat:0 }} sq.m</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px;"><span style="color:var(--ts);">Sale Rate</span><span style="font-weight:600;color:var(--wood-600);">₹{{ p.sale_rate }}/sq\.m</span></div>
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <span class="bv {% if p.stock_status == 'ok' %}bg{% elif p.stock_status == 'low' %}ba{% else %}br{% endif %}">{{ p.stock_status|title }}</span>
         <a class="bs" href="{% url 'edit_product' p.pk %}" style="font-size:11px;padding:3px 10px;">Edit</a>

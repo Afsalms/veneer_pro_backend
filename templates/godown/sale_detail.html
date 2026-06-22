@@ -32,14 +32,14 @@
 <div class="cv" style="margin-bottom:14px;">
   <div class="ch"><h6>Items Sold</h6></div>
   <table class="tv">
-    <thead><tr><th>Product</th><th>Size</th><th>Qty (sqft)</th><th>Rate/sqft</th><th>Amount</th><th>Cost</th><th>Profit</th></tr></thead>
+    <thead><tr><th>Product</th><th>Size</th><th>Qty (sq.m)</th><th>Rate/sq\.m</th><th>Amount</th><th>Cost</th><th>Profit</th></tr></thead>
     <tbody>
     {% for item in sale.items.all %}
     <tr>
       <td style="font-weight:500;">{{ item.product.display_name }}</td>
       <td style="color:var(--tm);">{{ item.size|default:"—" }}</td>
       <td>{{ item.qty_sqft|floatformat:2 }}</td>
-      <td>₹{{ item.rate_per_sqft }}</td>
+      <td>₹{{ item.rate_per_sq.m }}</td>
       <td style="font-weight:600;">₹{{ item.amount|floatformat:0 }}</td>
       <td style="color:var(--tm);font-size:12px;">₹{{ item.cost_amount|floatformat:0 }}</td>
       <td style="color:{% if item.gross_profit >= 0 %}#2d6a27{% else %}#b33a36{% endif %};font-weight:500;">₹{{ item.gross_profit|floatformat:0 }}</td>

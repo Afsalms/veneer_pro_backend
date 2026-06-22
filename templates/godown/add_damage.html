@@ -29,7 +29,7 @@
         <option value="">Select product</option>
         {% for p in products %}
         <option value="{{ p.pk }}" data-stock="{{ p.stock_qty|floatformat:4 }}" data-cost="{{ p.avg_cost|floatformat:4 }}">
-          {{ p }} — {{ p.stock_qty|floatformat:0 }} sqft available
+          {{ p }} — {{ p.stock_qty|floatformat:0 }} sq.m available
         </option>
         {% endfor %}
       </select>
@@ -67,12 +67,12 @@
 
   <div class="frow">
     <div class="fhalf">
-      <label class="fl">Damaged Quantity (sqft) *</label>
+      <label class="fl">Damaged Quantity (sq.m) *</label>
       <input class="fc" name="qty_sqft" id="dmg-qty" type="number" step="0.01" min="0.01"
              placeholder="0.00" required oninput="calcWriteOff()">
     </div>
     <div class="fhalf">
-      <label class="fl">Cost Rate (₹/sqft)</label>
+      <label class="fl">Cost Rate (₹/sq\.m)</label>
       <input class="fc" name="cost_rate_display" id="dmg-cost-rate" type="number" step="0.01"
              placeholder="Auto from product avg cost" readonly
              style="background:#f0ebe3;">
@@ -134,7 +134,7 @@ function onProductSelect(sel) {
     bar.innerHTML = `<i class="bi bi-exclamation-circle"></i> <strong>No stock available</strong> for this product.`;
   } else {
     bar.style.background = '#eaf5e8'; bar.style.border = '1px solid #c3e6cb'; bar.style.color = '#2d6a27';
-    bar.innerHTML = `<i class="bi bi-layers-half"></i> <strong>${stock.toFixed(2)} sqft</strong> available to mark as damaged.`;
+    bar.innerHTML = `<i class="bi bi-layers-half"></i> <strong>${stock.toFixed(2)} sq.m</strong> available to mark as damaged.`;
   }
 
   // Set cost rate
@@ -178,10 +178,10 @@ function calcWriteOff() {
     const writeoff = (qty * rate).toFixed(0);
     el.style.display = '';
     if (qty > stock) {
-      el.innerHTML = `<i class="bi bi-x-circle"></i> <strong>Quantity exceeds available stock.</strong> Only ${stock.toFixed(2)} sqft available.`;
+      el.innerHTML = `<i class="bi bi-x-circle"></i> <strong>Quantity exceeds available stock.</strong> Only ${stock.toFixed(2)} sq.m available.`;
       el.style.background = '#fdecea'; el.style.borderColor = '#f5c6cb'; el.style.color = '#b33a36';
     } else {
-      el.innerHTML = `<i class="bi bi-exclamation-triangle"></i> This will write off <strong>₹${parseInt(writeoff).toLocaleString('en-IN')}</strong> (${qty} sqft × ₹${rate}/sqft) from financials and reduce stock by ${qty} sqft.`;
+      el.innerHTML = `<i class="bi bi-exclamation-triangle"></i> This will write off <strong>₹${parseInt(writeoff).toLocaleString('en-IN')}</strong> (${qty} sq.m × ₹${rate}/sq\.m) from financials and reduce stock by ${qty} sq.m.`;
       el.style.background = '#fef6e4'; el.style.borderColor = '#fde8a0'; el.style.color = '#a06a10';
     }
   } else {
@@ -202,7 +202,7 @@ document.getElementById('dmg-submit').addEventListener('click', async function(e
 
   const writeoff = (qty * rate).toLocaleString('en-IN', {maximumFractionDigits:0});
   const confirmed = await vp.confirm(
-    `Record ${qty} sqft as damaged?\n\nWrite-off value: ₹${writeoff}\nThis will permanently reduce stock. You can delete this record later to restore stock.`,
+    `Record ${qty} sq.m as damaged?\n\nWrite-off value: ₹${writeoff}\nThis will permanently reduce stock. You can delete this record later to restore stock.`,
     'Confirm Damage',
     'warning'
   );

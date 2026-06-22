@@ -195,7 +195,9 @@
 <script>
 const GST_RATE = {{ godown_obj.gst_rate|floatformat:2 }};
 
-// Product data
+const SQFT_TO_SQM = 0.0929;
+const SQM_TO_SQFT = 1 / SQFT_TO_SQM;
+// Product data — stock stored internally, displayed in sq.m
 const PRODUCTS = {
   {% for p in products %}
   {{ p.pk }}: {
@@ -216,7 +218,8 @@ let saleCount = 0;
 function productOpts() {
   let opts = '<option value="">Select product</option>';
   for (const [id, p] of Object.entries(PRODUCTS)) {
-    const label = p.stock <= 0 ? ' ⚠ Out of stock' : ` (${p.stock.toFixed(0)} sqft available)`;
+    const stockSqm = p.stock * SQFT_TO_SQM;
+    const label = p.stock <= 0 ? ' ⚠ Out of stock' : ` (${stockSqm.toFixed(2)} sq.m available)`;
     opts += `<option value="${p.id}" data-stock="${p.stock}" data-rate="${p.sale_rate}"
              ${p.stock <= 0 ? 'style="color:#b33a36;"' : ''}>${p.name}${label}</option>`;
   }
@@ -245,12 +248,12 @@ function saleItemHTML(n) {
       <div class="stock-info-bar" style="display:none;margin:-6px 0 10px;padding:8px 12px;border-radius:7px;font-size:12px;"></div>
       <div class="frow">
         <div class="fthird">
-          <label class="fl">Qty (sqft) *</label>
+          <label class="fl">Qty (sq.m) *</label>
           <input class="fc sale-qty" name="qty_sqft[]" type="number" step="0.01" min="0.01"
                  placeholder="0.00" oninput="onSaleQtyInput(this)">
         </div>
         <div class="fthird">
-          <label class="fl">Rate (₹/sqft) *</label>
+          <label class="fl">Rate (₹/sq\.m) *</label>
           <input class="fc" name="rate_per_sqft[]" type="number" step="0.01" min="0.01"
                  placeholder="0.00" oninput="calcSaleLine(this.closest('.line-item'))">
         </div>
@@ -304,7 +307,7 @@ function onSaleProductChange(sel) {
   if (!prod) return;
 
   if (rateEl && !rateEl.value && prod.sale_rate > 0)
-    rateEl.value = prod.sale_rate.toFixed(2);
+    rateEl.value = (prod.sale_rate / SQFT_TO_SQM).toFixed(2);  // convert rate to per sq.m
 
   bar.style.display = '';
   if (prod.stock <= 0) {
@@ -312,10 +315,10 @@ function onSaleProductChange(sel) {
     bar.innerHTML = `<i class="bi bi-exclamation-triangle"></i> <strong>Out of stock</strong> — ${prod.display}`;
   } else if (prod.status === 'critical' || prod.status === 'low') {
     bar.style.background = '#fef6e4'; bar.style.border = '1px solid #fde8a0'; bar.style.color = '#a06a10';
-    bar.innerHTML = `<i class="bi bi-exclamation-circle"></i> <strong>${prod.stock.toFixed(2)} sqft</strong> available · ${prod.status === 'critical' ? 'Critical' : 'Low'} stock`;
+    bar.innerHTML = `<i class="bi bi-exclamation-circle"></i> <strong>${(prod.stock * SQFT_TO_SQM).toFixed(2)} sq.m</strong> available · ${prod.status === 'critical' ? 'Critical' : 'Low'} stock`;
   } else {
     bar.style.background = '#eaf5e8'; bar.style.border = '1px solid #c3e6cb'; bar.style.color = '#2d6a27';
-    bar.innerHTML = `<i class="bi bi-check-circle"></i> <strong>${prod.stock.toFixed(2)} sqft</strong> available`;
+    bar.innerHTML = `<i class="bi bi-check-circle"></i> <strong>${(prod.stock * SQFT_TO_SQM).toFixed(2)} sq.m</strong> available`;
   }
 
   const qtyEl = li.querySelector('.sale-qty');
@@ -333,17 +336,19 @@ function onSaleQtyInput(qtyEl) {
   if (pid && qty > 0) {
     const prod = PRODUCTS[pid];
     if (prod) {
-      if (qty > prod.stock) {
+      const stockSqm = prod.stock * SQFT_TO_SQM;  // prod.stock is internal unit
+      const qtySqft  = qty * SQM_TO_SQFT;          // user entered sq.m → convert for comparison
+      if (qtySqft > prod.stock) {
         bar.style.display = '';
         bar.style.background = '#fdecea'; bar.style.border = '1px solid #f5c6cb'; bar.style.color = '#b33a36';
-        bar.innerHTML = `<i class="bi bi-x-circle"></i> <strong>Insufficient stock.</strong> Entered ${qty.toFixed(2)} sqft · only <strong>${prod.stock.toFixed(2)} sqft</strong> available.`;
+        bar.innerHTML = `<i class="bi bi-x-circle"></i> <strong>Insufficient stock.</strong> Entered ${qty.toFixed(4)} sq.m · only <strong>${stockSqm.toFixed(4)} sq.m</strong> available.`;
         qtyEl.style.borderColor = '#b33a36';
       } else {
-        const rem = prod.stock - qty;
-        bar.style.background = rem < 100 ? '#fef6e4' : '#eaf5e8';
-        bar.style.border     = rem < 100 ? '1px solid #fde8a0' : '1px solid #c3e6cb';
-        bar.style.color      = rem < 100 ? '#a06a10' : '#2d6a27';
-        bar.innerHTML = `<i class="bi bi-check-circle"></i> OK · <strong>${rem.toFixed(2)} sqft</strong> will remain after this sale.`;
+        const remSqm = stockSqm - qty;
+        bar.style.background = remSqm < 10 ? '#fef6e4' : '#eaf5e8';
+        bar.style.border     = remSqm < 10 ? '1px solid #fde8a0' : '1px solid #c3e6cb';
+        bar.style.color      = remSqm < 10 ? '#a06a10' : '#2d6a27';
+        bar.innerHTML = `<i class="bi bi-check-circle"></i> OK · <strong>${remSqm.toFixed(4)} sq.m</strong> will remain after this sale.`;
         qtyEl.style.borderColor = '';
       }
     }
@@ -353,9 +358,9 @@ function onSaleQtyInput(qtyEl) {
 
 // ── Totals ────────────────────────────────────────────────────────
 function calcSaleLine(li) {
-  const qty  = parseFloat(li.querySelector('.sale-qty')?.value) || 0;
-  const rate = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;
-  const amt  = qty * rate;
+  const qty  = parseFloat(li.querySelector('.sale-qty')?.value) || 0;  // in sq.m
+  const rate = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;  // per sq.m (will be converted on submit)
+  const amt  = qty * rate;  // sq.m × ₹/sq.m = ₹ (correct)
   const el   = li.querySelector('.li-amt');
   if (el) el.value = amt > 0 ? amt.toLocaleString('en-IN', {maximumFractionDigits:2}) : '';
   calcSaleTotal();
@@ -482,8 +487,10 @@ document.getElementById('sale-submit').addEventListener('click', async function(
     if (pid && qty > 0) {
       const prod = PRODUCTS[pid];
       if (prod) {
+        const qtySqft = qty * SQM_TO_SQFT;
+        const stockSqm = prod.stock * SQFT_TO_SQM;
         if (prod.stock <= 0) overStockErrors.push(`${prod.display} is out of stock.`);
-        else if (qty > prod.stock) overStockErrors.push(`${prod.display}: only ${prod.stock.toFixed(2)} sqft available, entered ${qty.toFixed(2)} sqft.`);
+        else if (qtySqft > prod.stock) overStockErrors.push(`${prod.display}: only ${stockSqm.toFixed(4)} sq.m available, entered ${qty.toFixed(4)} sq.m.`);
       }
     }
     if (pid && qty > 0 && rate > 0) hasValidItem = true;

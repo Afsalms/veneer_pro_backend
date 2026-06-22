@@ -966,15 +966,22 @@ def add_sale(request):
         rates = request.POST.getlist('rate_per_sqft[]')
         qtys  = request.POST.getlist('qty_sqft[]')
 
+        # Conversion: user enters sq.m and ₹/sq.m → convert to sqft and ₹/sqft for DB
+        SQM_TO_SQFT = Decimal('10.7639')  # 1 / 0.0929
+        SQFT_TO_SQM = Decimal('0.0929')
+
         # ── PASS 1: Validate stock BEFORE opening a transaction ──
-        # Collect all valid line items and check stock availability
         stock_errors = []
         line_items   = []
         for i, pid in enumerate(request.POST.getlist('product[]')):
             if not pid: continue
-            qty  = Decimal(qtys[i]) if i < len(qtys) and qtys[i] else Decimal('0')
-            rate = Decimal(rates[i]) if i < len(rates) and rates[i] else Decimal('0')
-            if qty <= 0 or rate <= 0: continue
+            qty_sqm  = Decimal(qtys[i])  if i < len(qtys)  and qtys[i]  else Decimal('0')
+            rate_sqm = Decimal(rates[i]) if i < len(rates) and rates[i] else Decimal('0')
+            if qty_sqm <= 0 or rate_sqm <= 0: continue
+
+            # Convert user-entered sq.m values → sqft for DB storage and stock comparison
+            qty  = (qty_sqm  * SQM_TO_SQFT).quantize(Decimal('0.0001'))
+            rate = (rate_sqm * SQFT_TO_SQM).quantize(Decimal('0.0001'))  # ₹/sq.m → ₹/sqft
 
             try:
                 product = products_list.get(pk=pid)
@@ -982,14 +989,15 @@ def add_sale(request):
                 stock_errors.append(f'Item {i+1}: Product not found.')
                 continue
 
+            stock_sqm = (product.stock_qty * SQFT_TO_SQM).quantize(Decimal('0.0001'))
             if product.stock_qty <= 0:
                 stock_errors.append(
-                    f'{product.display_name}: Out of stock (0 sqft available).'
+                    f'{product.display_name}: Out of stock (0 sq.m available).'
                 )
-            elif qty > product.stock_qty:
+            elif qty > product.stock_qty:  # compare in sqft (both now sqft)
                 stock_errors.append(
-                    f'{product.display_name}: Only {product.stock_qty:.2f} sqft '
-                    f'available, you entered {qty:.2f} sqft.'
+                    f'{product.display_name}: Only {stock_sqm:.4f} sq.m '
+                    f'available, you entered {qty_sqm:.4f} sq.m.'
                 )
             else:
                 line_items.append((i, pid, product, qty, rate))
@@ -1014,14 +1022,15 @@ def add_sale(request):
                     pk__in=[item[1] for item in line_items]
                 )
             }
-            # Double-check stock hasn't changed since validation
+            # Double-check stock hasn't changed since validation (qty is now sqft)
             race_errors = []
             for i, pid, product, qty, rate in line_items:
                 locked = locked_products.get(int(pid))
                 if locked and qty > locked.stock_qty:
+                    stock_sqm = (locked.stock_qty * Decimal('0.0929')).quantize(Decimal('0.0001'))
                     race_errors.append(
                         f'{locked.display_name}: Stock changed — '
-                        f'only {locked.stock_qty:.2f} sqft available now.'
+                        f'only {stock_sqm:.4f} sq.m available now.'
                     )
             if race_errors:
                 for err in race_errors:
@@ -1805,10 +1814,14 @@ def add_estimation(request):
             pieces= request.POST.getlist('pieces[]')
             lens  = request.POST.getlist('sheet_length[]')
             wids  = request.POST.getlist('sheet_width[]')
+            SQM_TO_SQFT = Decimal('10.7639')
+            SQFT_TO_SQM = Decimal('0.0929')
             for i, pid in enumerate(request.POST.getlist('product[]')):
-                qty  = Decimal(qtys[i]) if i<len(qtys) and qtys[i] else Decimal('0')
-                rate = Decimal(rates[i]) if i<len(rates) and rates[i] else Decimal('0')
-                if qty <= 0 or rate <= 0: continue
+                qty_sqm  = Decimal(qtys[i])  if i<len(qtys)  and qtys[i]  else Decimal('0')
+                rate_sqm = Decimal(rates[i]) if i<len(rates) and rates[i] else Decimal('0')
+                if qty_sqm <= 0 or rate_sqm <= 0: continue
+                qty  = (qty_sqm  * SQM_TO_SQFT).quantize(Decimal('0.0001'))
+                rate = (rate_sqm * SQFT_TO_SQM).quantize(Decimal('0.0001'))
                 EstimationItem.objects.create(
                     estimation=est,
                     product_id=pid if pid else None,
@@ -2256,7 +2269,9 @@ def add_damage(request, grn_pk=None):
             product = get_object_or_404(Product, pk=product_id, godown=godown)
             grn_obj = get_object_or_404(StockIn, pk=grn_id, godown=godown) if grn_id else None
 
-            # Check available stock (received - sold - already damaged)
+            # Check available stock in sqft (DB unit); qty entered by user is sq.m
+            SQM_TO_SQFT = Decimal('10.7639')
+            SQFT_TO_SQM = Decimal('0.0929')
             total_received = sum(
                 i.qty_sqft for i in StockInItem.objects.filter(product=product, stock_in__godown=godown)
             )
@@ -2266,14 +2281,16 @@ def add_damage(request, grn_pk=None):
             total_damaged_existing = sum(
                 d.qty_sqft for d in StockDamage.objects.filter(product=product, godown=godown)
             )
-            available = total_received - total_sold - total_damaged_existing
-            qty_dec   = Decimal(qty)
+            available_sqft = total_received - total_sold - total_damaged_existing
+            available_sqm  = available_sqft * SQFT_TO_SQM
+            qty_sqm = Decimal(qty)
+            qty_dec = (qty_sqm * SQM_TO_SQFT).quantize(Decimal('0.0001'))  # convert to sqft for DB
 
-            if qty_dec > available:
+            if qty_dec > available_sqft:
                 errors.append(
-                    f'Only {available:.2f} sqft available for {product.display_name} '
-                    f'(received {total_received:.0f} − sold {total_sold:.0f} − '
-                    f'already damaged {total_damaged_existing:.0f}).'
+                    f'Only {available_sqm:.4f} sq.m available for {product.display_name} '
+                    f'(received {total_received * SQFT_TO_SQM:.2f} − sold {total_sold * SQFT_TO_SQM:.2f} − '
+                    f'already damaged {total_damaged_existing * SQFT_TO_SQM:.2f} sq.m).'
                 )
 
         if errors:
@@ -2302,7 +2319,7 @@ def add_damage(request, grn_pk=None):
 
             messages.success(
                 request,
-                f'Damage recorded: {qty_dec:.2f} sqft {product.display_name} '
+                f'Damage recorded: {qty_dec:.2f} sq.m {product.display_name} '
                 f'({damage.get_category_display()}) — '
                 f'write-off value ₹{damage.write_off_value:,.0f}.'
             )

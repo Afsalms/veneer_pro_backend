@@ -62,7 +62,7 @@
     {% for species, data in species_map.items %}
     <div style="background:var(--body-bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;min-width:140px;">
       <div style="font-size:13px;font-weight:600;color:var(--ts);">{{ species }}</div>
-      <div style="font-size:12px;color:var(--tm);margin-top:3px;">{{ data.qty|floatformat:0 }} sqft</div>
+      <div style="font-size:12px;color:var(--tm);margin-top:3px;">{{ data.qty|floatformat:0 }} sq.m</div>
       <div style="font-size:14px;font-weight:700;color:var(--wood-600);margin-top:2px;">₹{{ data.amount|floatformat:0 }}</div>
     </div>
     {% endfor %}

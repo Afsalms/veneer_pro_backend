@@ -28,15 +28,15 @@
 <div class="cv" style="margin-bottom:14px;">
   <div class="ch"><h6>Items Received</h6></div>
   <table class="tv">
-    <thead><tr><th>Product</th><th>Qty Received</th><th>Rate/sqft</th><th>Amount</th><th>Landed Rate</th><th>Rack</th></tr></thead>
+    <thead><tr><th>Product</th><th>Qty Received</th><th>Rate/sq\.m</th><th>Amount</th><th>Landed Rate</th><th>Rack</th></tr></thead>
     <tbody>
     {% for item in grn.items.all %}
     <tr>
       <td style="font-weight:500;">{{ item.product.display_name }}</td>
       <td>{{ item.qty_display }}</td>
-      <td>₹{{ item.rate_per_sqft }}/sqft</td>
+      <td>₹{{ item.rate_per_sq.m }}/sq\.m</td>
       <td style="font-weight:600;">₹{{ item.amount|floatformat:0 }}</td>
-      <td style="color:var(--tm);">₹{{ item.landed_rate|floatformat:2 }}/sqft</td>
+      <td style="color:var(--tm);">₹{{ item.landed_rate|floatformat:2 }}/sq\.m</td>
       <td style="color:var(--tm);">{{ item.rack_location|default:"—" }}</td>
     </tr>
     {% endfor %}
@@ -94,7 +94,7 @@
     <a class="bs" href="{% url 'add_damage_grn' grn.pk %}" style="color:#b33a36;border-color:#f5c6cb;">+ Record More</a>
   </div>
   <table class="tv">
-    <thead><tr><th>Date</th><th>Product</th><th>Category</th><th>Qty (sqft)</th><th>Write-off Value</th><th>Notes</th></tr></thead>
+    <thead><tr><th>Date</th><th>Product</th><th>Category</th><th>Qty (sq.m)</th><th>Write-off Value</th><th>Notes</th></tr></thead>
     <tbody>
     {% for d in grn.damages.all %}
     <tr>

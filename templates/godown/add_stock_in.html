@@ -71,7 +71,7 @@
     <div>
       <span style="font-size:13px;font-weight:600;color:var(--ts);">Items Received</span>
       <div style="font-size:11px;color:var(--tm);margin-top:2px;">
-        Enter in <strong>sqft</strong> or <strong>pieces</strong> — rate is always ₹ per sqft
+        Enter in <strong>sq.m</strong> or <strong>pieces</strong> — rate is always ₹ per sq.m
       </div>
     </div>
     <button type="button" class="add-item-btn" id="add-grn-item"><i class="bi bi-plus"></i> Add Item</button>
@@ -90,7 +90,7 @@
   <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
     <div>
       <span style="font-size:13px;font-weight:600;color:var(--ts);">Landing Expenses</span>
-      <div style="font-size:11px;color:var(--tm);margin-top:2px;">Transport, labour, forklift — apportioned into landed cost per sqft</div>
+      <div style="font-size:11px;color:var(--tm);margin-top:2px;">Transport, labour, forklift — apportioned into landed cost per sq.m</div>
     </div>
     <button type="button" class="add-item-btn" id="add-exp-btn"><i class="bi bi-plus"></i> Add Expense</button>
   </div>
@@ -188,7 +188,7 @@ function grnItemHTML(n) {
         <div class="fhalf">
           <label class="fl">Purchase Unit</label>
           <select class="fc fsel unit-sel" onchange="onUnitChange(this)">
-            <option value="sqft">Square Feet (sqft)</option>
+            <option value="sqft">Square Metres (sq.m)</option>
             <option value="pcs">Pieces (nos)</option>
           </select>
           <input type="hidden" name="qty_unit[]" value="sqft">
@@ -198,8 +198,8 @@ function grnItemHTML(n) {
       <!-- Sqft mode -->
       <div class="sqft-section frow">
         <div class="fhalf">
-          <label class="fl">Quantity (sqft) *</label>
-          <input class="fc sqft-input" type="number" step="0.01" min="0.01" placeholder="0.00"
+          <label class="fl">Quantity (sq.m) *</label>
+          <input class="fc sq.m-input" type="number" step="0.01" min="0.01" placeholder="0.00"
                  oninput="onSqftInput(this)">
           <input type="hidden" name="qty_sqft[]" value="">
         </div>
@@ -245,7 +245,7 @@ function grnItemHTML(n) {
       <!-- Rate — always visible -->
       <div class="frow">
         <div class="fhalf">
-          <label class="fl">Rate (₹ per sqft) *</label>
+          <label class="fl">Rate (₹ per sq.m) *</label>
           <input class="fc li-rate" name="rate_per_sqft[]" type="number" step="0.01" min="0.01"
                  placeholder="0.00" oninput="calcLineAmount(getLI(this))">
         </div>
@@ -446,8 +446,8 @@ document.getElementById('po-select').addEventListener('change', async function (
         if (infoEl) {
           infoEl.innerHTML =
             '<span style="color:#a06a10;font-weight:600;">⚡ Partial delivery: ' +
-            item.qty_received.toFixed(2) + ' sqft already received. ' +
-            item.qty_sqft.toFixed(2) + ' sqft pending.</span>';
+            item.qty_received.toFixed(2) + ' sq.m already received. ' +
+            item.qty_sqft.toFixed(2) + ' sq.m pending.</span>';
         }
       }
 
@@ -533,7 +533,7 @@ function validateGRN() {
   document.querySelectorAll('#si-items .line-item').forEach((li, idx) => {
     const n       = idx + 1;
     const pid     = li.querySelector('[name="product[]"]')?.value;
-    const unit    = li.querySelector('.unit-sel')?.value || 'sqft';
+    const unit    = li.querySelector('.unit-sel')?.value || 'sq.m';
     const rate    = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;
 
     // Get qty from whichever hidden input has a value
@@ -550,7 +550,7 @@ function validateGRN() {
       li.querySelector('[name="product[]"]').style.borderColor = '#b33a36';
     }
     if (rate <= 0) {
-      itemErrors.push(`Item ${n}: Enter a rate per sqft.`);
+      itemErrors.push(`Item ${n}: Enter a rate per sq.m.`);
       li.querySelector('[name="rate_per_sqft[]"]').style.borderColor = '#b33a36';
     }
 
@@ -564,7 +564,7 @@ function validateGRN() {
       const pcs = parseFloat(pcsEl?.value) || 0;
       const len = parseFloat(lenEl?.value) || 0;
       const wid = parseFloat(widEl?.value) || 0;
-      // Also check the calculated qty_sqft hidden value
+      // Also check the calculated qty_sq.m hidden value
       const calcQty = parseFloat(li.querySelector('.pcs-section [name="qty_sqft[]"]')?.value) || 0;
       if (pcs <= 0) {
         itemErrors.push(`Item ${n}: Enter number of pieces.`);
@@ -582,7 +582,7 @@ function validateGRN() {
     } else {
       const sqftVis = parseFloat(li.querySelector('.sqft-input')?.value) || 0;
       if (sqftVis <= 0) {
-        itemErrors.push(`Item ${n}: Enter quantity in sqft.`);
+        itemErrors.push(`Item ${n}: Enter quantity in sq.m.`);
         const sqftEl = li.querySelector('.sqft-input');
         if (sqftEl) sqftEl.style.borderColor = '#b33a36';
       }

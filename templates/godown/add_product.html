@@ -19,20 +19,20 @@
           <option value="{{ val }}" {% if product.finish == val or not product and val == default_finish %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select></div></div>
-  <div class="frow"><div class="fhalf"><label class="fl">Buy Rate (₹/sqft)</label><input class="fc" name="buy_rate" type="number" step="0.01" value="{{ product.buy_rate|default:'0' }}" placeholder="0"></div><div class="fhalf"><label class="fl">Sale Rate (₹/sqft)</label><input class="fc" name="sale_rate" type="number" step="0.01" value="{{ product.sale_rate|default:'0' }}" placeholder="0"></div></div>
-  <div class="frow"><div class="fhalf"><label class="fl">Min Stock (sqft)</label><input class="fc" name="min_stock" type="number" value="{{ product.min_stock|default:'500' }}" placeholder="500"></div><div class="fhalf"><label class="fl">HSN Code</label><input class="fc" name="hsn_code" value="{{ product.hsn_code|default:'' }}" placeholder="4408 (optional)"></div></div>
+  <div class="frow"><div class="fhalf"><label class="fl">Buy Rate (₹/sq\.m)</label><input class="fc" name="buy_rate" type="number" step="0.01" value="{{ product.buy_rate|default:'0' }}" placeholder="0"></div><div class="fhalf"><label class="fl">Sale Rate (₹/sq\.m)</label><input class="fc" name="sale_rate" type="number" step="0.01" value="{{ product.sale_rate|default:'0' }}" placeholder="0"></div></div>
+  <div class="frow"><div class="fhalf"><label class="fl">Min Stock (sq.m)</label><input class="fc" name="min_stock" type="number" value="{{ product.min_stock|default:'500' }}" placeholder="500"></div><div class="fhalf"><label class="fl">HSN Code</label><input class="fc" name="hsn_code" value="{{ product.hsn_code|default:'' }}" placeholder="4408 (optional)"></div></div>
 
   <div style="background:var(--body-bg);border-radius:8px;padding:12px 14px;">
     <div style="font-size:12px;font-weight:600;color:var(--ts);margin-bottom:10px;">
       Standard Sheet Size
-      <span style="font-weight:400;color:var(--tm);"> — used to auto-convert pieces → sqft in PO and GRN forms</span>
+      <span style="font-weight:400;color:var(--tm);"> — used to auto-convert pieces → sq.m in PO and GRN forms</span>
     </div>
     <div class="frow">
       <div class="fthird"><label class="fl">Sheet Length (ft)</label><input class="fc" name="sheet_length" type="number" step="0.01" value="{{ product.sheet_length|default:'8' }}" placeholder="8" oninput="calcSheet()"></div>
       <div class="fthird"><label class="fl">Sheet Width (ft)</label><input class="fc" name="sheet_width" type="number" step="0.01" value="{{ product.sheet_width|default:'4' }}" placeholder="4" oninput="calcSheet()"></div>
-      <div class="fthird"><label class="fl">Sqft per Sheet</label><input class="fc" id="sheet-sqft-display" readonly placeholder="32.00" style="background:#f0ebe3;font-weight:600;"></div>
+      <div class="fthird"><label class="fl">sq.m per Sheet</label><input class="fc" id="sheet-sqft-display" readonly placeholder="2.9728" style="background:#f0ebe3;font-weight:600;"></div>
     </div>
-    <div style="font-size:11px;color:var(--tm);">Common sizes: 8×4 ft = 32 sqft &nbsp;|&nbsp; 8×3 ft = 24 sqft &nbsp;|&nbsp; 7×3 ft = 21 sqft</div>
+    <div style="font-size:11px;color:var(--tm);">Common sizes: 8×4 ft = 2.9728 sq.m &nbsp;|&nbsp; 8×3 ft = 2.2296 sq.m &nbsp;|&nbsp; 7×3 ft = 1.9509 sq.m</div>
   </div>
 </div>
 <div class="fp-actions"><a class="bs" href="{% url 'products' %}">Cancel</a><button class="bw" type="submit"><i class="bi bi-check2"></i> Save Product</button></div>
@@ -68,7 +68,8 @@ $(function(){
 function calcSheet(){
   const l = parseFloat(document.querySelector('[name=sheet_length]').value) || 0;
   const w = parseFloat(document.querySelector('[name=sheet_width]').value) || 0;
-  document.getElementById('sheet-sqft-display').value = (l * w).toFixed(2);
+  const SQFT_TO_SQM = 0.0929;
+  document.getElementById('sheet-sqft-display').value = ((l * w) * SQFT_TO_SQM).toFixed(4);
 }
 document.addEventListener('DOMContentLoaded', calcSheet);
 </script>

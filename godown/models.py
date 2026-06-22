@@ -209,7 +209,7 @@ class Product(models.Model):
     hsn_code    = models.CharField(max_length=8, blank=True, default='4408',
                       help_text='HSN code for e-invoice (face veneer = 4408)')
     uom         = models.CharField(max_length=5, blank=True, default='SQF',
-                      help_text='Unit of measure for GSP (SQF=square feet)')
+                      help_text='Unit of measure for GSP/e-invoice (SQF = square feet, internal unit)')
     stock_qty   = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     sheet_length= models.DecimalField(max_digits=6, decimal_places=2, default=8)
     sheet_width = models.DecimalField(max_digits=6, decimal_places=2, default=4)
@@ -468,8 +468,8 @@ class StockInItem(models.Model):
     @property
     def qty_display(self):
         if self.qty_unit == 'pcs' and self.pieces:
-            return f"{self.pieces:.0f} pcs × {self.sheet_length}×{self.sheet_width}ft = {self.qty_sqft:.2f} sqft"
-        return f"{self.qty_sqft:.2f} sqft"
+            return f"{self.pieces:.0f} pcs × {self.sheet_length}×{self.sheet_width}ft = {self.qty_sqft:.2f} sq.m"
+        return f"{self.qty_sqft:.2f} sq.m"
 
     @property
     def qty_sold(self):
@@ -559,7 +559,7 @@ class StockDamage(models.Model):
         ordering = ['-date', '-created_at']
 
     def __str__(self):
-        return f"{self.product} — {self.qty_sqft} sqft ({self.get_category_display()})"
+        return f"{self.product} — {self.qty_sqft} sq.m ({self.get_category_display()})"
 
     @property
     def write_off_value(self):

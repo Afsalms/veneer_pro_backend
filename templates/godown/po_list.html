@@ -19,7 +19,7 @@
         <div style="font-size:11px;">
           {{ item.product.display_name }}:
           <span style="color:{% if item.is_fully_received %}#2d6a27{% else %}#a06a10{% endif %};font-weight:500;">
-            {{ item.qty_received|floatformat:0 }}/{{ item.qty_sqft|floatformat:0 }} sqft
+            {{ item.qty_received|floatformat:0 }}/{{ item.qty_sqft|floatformat:0 }} sq.m
           </span>
         </div>
       {% endfor %}</td>
@@ -40,7 +40,7 @@
       <div><div class="mcn">{{ po.supplier.name }}</div><div class="mcs">{{ po.po_number }} · {{ po.date }}</div></div>
       <span class="bv {% if po.status == 'received' %}bg{% elif po.status == 'cancelled' %}br{% elif po.status == 'partial' %}ba{% else %}bb{% endif %}">{{ po.get_status_display }}</span>
     </div>
-    {% for item in po.po_items.all %}<div class="mr"><span class="mrk">{{ item.product.display_name }}</span><span class="mrv" style="color:{% if item.is_fully_received %}#2d6a27{% else %}#a06a10{% endif %};">{{ item.qty_received|floatformat:0 }}/{{ item.qty_sqft|floatformat:0 }} sqft</span></div>{% endfor %}
+    {% for item in po.po_items.all %}<div class="mr"><span class="mrk">{{ item.product.display_name }}</span><span class="mrv" style="color:{% if item.is_fully_received %}#2d6a27{% else %}#a06a10{% endif %};">{{ item.qty_received|floatformat:0 }}/{{ item.qty_sqft|floatformat:0 }} sq.m</span></div>{% endfor %}
     <div class="mr"><span class="mrk">Value</span><span class="mrv" style="font-weight:600;">₹{{ po.total_value|floatformat:0 }}</span></div>
     <div style="margin-top:10px;"><a class="bw" href="{% url 'po_detail' po.pk %}" style="width:100%;justify-content:center;">View Details</a></div>
   </div>{% endfor %}
@@ -59,7 +59,7 @@
 function renderPORow(p) {
   const items = p.items.map(i => {
     const col = i.is_fully ? '#2d6a27' : '#a06a10';
-    return `<div style="font-size:11px;">${i.product}: <span style="color:${col};font-weight:500;">${i.qty_received.toFixed(0)}/${i.qty_ordered.toFixed(0)} sqft</span></div>`;
+    return `<div style="font-size:11px;">${i.product}: <span style="color:${col};font-weight:500;">${i.qty_received.toFixed(0)}/${i.qty_ordered.toFixed(0)} sq.m</span></div>`;
   }).join('');
   const badge = p.status==='received'?'bg':p.status==='cancelled'?'br':p.status==='partial'?'ba':'bb';
   return `<tr>
