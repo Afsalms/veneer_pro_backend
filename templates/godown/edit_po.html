@@ -1,0 +1,78 @@
+{% extends "godown/base.html" %}
+{% block title %}Edit PO — {{ po.po_number }}{% endblock %}
+{% block page_title %}Edit Purchase Order{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'po_detail' po.pk %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">Edit {{ po.po_number }}</span>
+</div>
+
+{% if po.grns.exists %}
+<div style="background:#fef6e4;border:1px solid #fde8a0;border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#a06a10;">
+  <i class="bi bi-exclamation-circle"></i> <strong>GRN already recorded.</strong>
+  Line items cannot be changed once goods are received. You can update supplier, date and notes.
+</div>
+{% endif %}
+
+<form method="post" id="edit-po-form">{% csrf_token %}
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">PO Details</div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Supplier *</label>
+      <select class="fc fsel" name="supplier" required>
+        {% for s in suppliers %}<option value="{{ s.pk }}" {% if s.pk == po.supplier.pk %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="fhalf">
+      <label class="fl">Date *</label>
+      <input class="fc" name="date" type="date" required value="{{ po.date|date:'Y-m-d' }}">
+    </div>
+  </div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Currency</label>
+      <select class="fc fsel" name="currency">
+        <option value="INR" {% if po.currency == 'INR' %}selected{% endif %}>INR ₹</option>
+        <option value="USD" {% if po.currency == 'USD' %}selected{% endif %}>USD $</option>
+      </select>
+    </div>
+    <div class="fhalf">
+      <label class="fl">Notes</label>
+      <input class="fc" name="notes" value="{{ po.notes }}">
+    </div>
+  </div>
+</div>
+
+{% if not po.grns.exists %}
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">Items Ordered</div>
+  {% for item in po.po_items.all %}
+  <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+    <div style="font-weight:600;font-size:13px;">{{ item.product.display_name }}</div>
+    <div style="font-size:12px;color:var(--tm);margin-top:4px;">
+      {{ item.qty_display }} @ ₹{{ item.rate_per_sqm }}/sq.m
+      — <strong>₹{{ item.amount|floatformat:0 }}</strong>
+    </div>
+  </div>
+  <!-- Pass existing items through as hidden fields so _save_po_items can repopulate -->
+  <input type="hidden" name="product[]" value="{{ item.product.pk }}">
+  <input type="hidden" name="qty_sqm[]" value="{{ item.qty_sqm }}">
+  <input type="hidden" name="rate_per_sqm[]" value="{{ item.rate_per_sqm }}">
+  <input type="hidden" name="qty_unit[]" value="{{ item.qty_unit }}">
+  <input type="hidden" name="pieces[]" value="{{ item.pieces|default:'' }}">
+  <input type="hidden" name="sheet_length[]" value="{{ item.sheet_length|default:'' }}">
+  <input type="hidden" name="sheet_width[]" value="{{ item.sheet_width|default:'' }}">
+  {% endfor %}
+  <div style="padding-top:10px;font-size:12px;color:var(--tm);">
+    To change line items, delete this PO and create a new one.
+  </div>
+</div>
+{% endif %}
+
+<div class="fp-actions">
+  <a class="bs" href="{% url 'po_detail' po.pk %}">Cancel</a>
+  <button class="bw" type="submit"><i class="bi bi-check2"></i> Update PO</button>
+</div>
+</form>
+{% endblock %}

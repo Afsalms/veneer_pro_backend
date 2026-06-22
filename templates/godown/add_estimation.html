@@ -86,8 +86,8 @@ function estItemHTML(n) {
         </div>
       </div>
       <div class="frow">
-        <div class="fthird"><label class="fl">Qty (sq.m) *</label><input class="fc" name="qty_sqft[]" type="number" step="0.01" min="0.01" placeholder="0" oninput="calcEstLine(this)" required></div>
-        <div class="fthird"><label class="fl">Rate (₹/sq.m) *</label><input class="fc" name="rate_per_sqft[]" type="number" step="0.01" min="0.01" placeholder="0" oninput="calcEstLine(this)" required></div>
+        <div class="fthird"><label class="fl">Qty (sq.m) *</label><input class="fc" name="qty_sqm[]" type="number" step="0.01" min="0.01" placeholder="0" oninput="calcEstLine(this)" required></div>
+        <div class="fthird"><label class="fl">Rate (₹/sq.m) *</label><input class="fc" name="rate_per_sqm[]" type="number" step="0.01" min="0.01" placeholder="0" oninput="calcEstLine(this)" required></div>
         <div class="fthird"><label class="fl">Amount (₹)</label><input class="fc est-amt" readonly placeholder="auto" style="background:#f0ebe3;font-weight:600;"></div>
       </div>
     </div>
@@ -113,7 +113,7 @@ function onEstProductChange(sel) {
   const li = sel.closest('.line-item');
   const opt = sel.options[sel.selectedIndex];
   if (opt && opt.dataset.rate) {
-    const rateEl = li.querySelector('[name="rate_per_sqft[]"]');
+    const rateEl = li.querySelector('[name="rate_per_sqm[]"]');
     if (rateEl && !rateEl.value) rateEl.value = opt.dataset.rate;
   }
   calcEstLine(sel);
@@ -121,8 +121,8 @@ function onEstProductChange(sel) {
 
 function calcEstLine(inp) {
   const li = inp.closest('.line-item');
-  const qty  = parseFloat(li.querySelector('[name="qty_sqft[]"]')?.value) || 0;
-  const rate = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;
+  const qty  = parseFloat(li.querySelector('[name="qty_sqm[]"]')?.value) || 0;
+  const rate = parseFloat(li.querySelector('[name="rate_per_sqm[]"]')?.value) || 0;
   const amt  = qty * rate;
   const amtEl = li.querySelector('.est-amt');
   if (amtEl) amtEl.value = amt > 0 ? amt.toLocaleString('en-IN',{maximumFractionDigits:2}) : '';
@@ -162,8 +162,8 @@ $(function(){
     submitHandler:function(form){
       let valid=false;
       document.querySelectorAll('#est-items .line-item').forEach(li=>{
-        const qty=parseFloat(li.querySelector('[name="qty_sqft[]"]')?.value)||0;
-        const rate=parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value)||0;
+        const qty=parseFloat(li.querySelector('[name="qty_sqm[]"]')?.value)||0;
+        const rate=parseFloat(li.querySelector('[name="rate_per_sqm[]"]')?.value)||0;
         if(qty>0&&rate>0)valid=true;
       });
       if(!valid){vp.alert('Please add at least one item with quantity and rate.','Missing Items','warning');return false;}

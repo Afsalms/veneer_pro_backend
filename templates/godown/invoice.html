@@ -105,7 +105,7 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:#1a1a1a;background:#f
     <div class="party-box">
       <h4>Ship To</h4>
       <div class="party-name">{{ sale.customer.name }}</div>
-      <div class="party-detail">{{ sale.delivery_address|default:sale.customer.location|linebreaksbr }}</div>
+      <div class="party-detail">{% if sale.delivery_address %}{{ sale.delivery_address|linebreaksbr }}{% elif sale.customer %}{{ sale.customer.location|linebreaksbr }}{% endif %}</div>
       {% if sale.transport %}<div style="font-size:11px;margin-top:4px;color:#555;">Transport: {{ sale.transport }}</div>{% endif %}
     </div>
   </div>

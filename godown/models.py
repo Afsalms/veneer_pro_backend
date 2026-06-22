@@ -205,14 +205,20 @@ class Product(models.Model):
     finish      = models.CharField(max_length=20, choices=FINISH_CHOICES, default='Natural')
     buy_rate    = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     sale_rate   = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    min_stock   = models.DecimalField(max_digits=10, decimal_places=2, default=500)
+    min_stock   = models.DecimalField(max_digits=10, decimal_places=4, default=500,
+                      help_text='Minimum stock level in sq.m')
     hsn_code    = models.CharField(max_length=8, blank=True, default='4408',
                       help_text='HSN code for e-invoice (face veneer = 4408)')
     uom         = models.CharField(max_length=5, blank=True, default='SQF',
                       help_text='Unit of measure for GSP/e-invoice (SQF = square feet, internal unit)')
-    stock_qty   = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    sheet_length= models.DecimalField(max_digits=6, decimal_places=2, default=8)
-    sheet_width = models.DecimalField(max_digits=6, decimal_places=2, default=4)
+    stock_qty   = models.DecimalField(max_digits=12, decimal_places=4, default=0,
+                      help_text='Current stock in sq.m')
+    sheet_length        = models.DecimalField(max_digits=6, decimal_places=2, default=8)
+    sheet_width         = models.DecimalField(max_digits=6, decimal_places=2, default=4)
+    sheet_sqm           = models.DecimalField(max_digits=8, decimal_places=4, default=0,
+                              help_text='Auto-calculated sq.m per sheet (length × width × 0.0929)')
+    sheet_sqm_override  = models.DecimalField(max_digits=8, decimal_places=4, null=True, blank=True,
+                              help_text='Override sq.m per sheet — used if set instead of auto value')
     avg_cost    = models.DecimalField(max_digits=10, decimal_places=4, default=0)
     created_at  = models.DateTimeField(auto_now_add=True)
 
@@ -236,6 +242,13 @@ class Product(models.Model):
     @property
     def sheet_sqft(self):
         return self.sheet_length * self.sheet_width
+
+    @property
+    def effective_sheet_sqm(self):
+        """Returns override if set, else auto-calculated sheet_sqm."""
+        if self.sheet_sqm_override is not None:
+            return self.sheet_sqm_override
+        return self.sheet_sqm
 
     @property
     def stock_value(self):
@@ -329,7 +342,7 @@ class PurchaseOrder(models.Model):
         if not items:
             return
 
-        total_ordered  = sum(i.qty_sqft for i in items)
+        total_ordered  = sum(i.qty_sqm for i in items)
         total_received = sum(i.qty_received for i in items)
 
         if total_received <= 0:
@@ -348,9 +361,9 @@ class PurchaseOrderItem(models.Model):
     UNIT_CHOICES = [('sqft','Square Feet'),('pcs','Pieces')]
     po           = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='po_items')
     product      = models.ForeignKey(Product, on_delete=models.PROTECT)
-    qty_sqft     = models.DecimalField(max_digits=10, decimal_places=4,
-                       help_text='Always in sqft — canonical unit')
-    rate_per_sqft= models.DecimalField(max_digits=10, decimal_places=2)
+    qty_sqm      = models.DecimalField(max_digits=10, decimal_places=4,
+                       help_text='Quantity in sq.m — canonical unit')
+    rate_per_sqm = models.DecimalField(max_digits=10, decimal_places=2)
     # Original unit tracking
     qty_unit     = models.CharField(max_length=5, choices=UNIT_CHOICES, default='sqft')
     pieces       = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -359,7 +372,7 @@ class PurchaseOrderItem(models.Model):
 
     @property
     def amount(self):
-        return self.qty_sqft * self.rate_per_sqft
+        return self.qty_sqm * self.rate_per_sqm
 
     @property
     def qty_received(self):
@@ -368,22 +381,22 @@ class PurchaseOrderItem(models.Model):
         result = StockInItem.objects.filter(
             stock_in__po=self.po,
             product=self.product,
-        ).aggregate(total=Sum('qty_sqft'))['total']
+        ).aggregate(total=Sum('qty_sqm'))['total']
         return result or Decimal('0')
 
     @property
     def qty_pending(self):
-        return max(Decimal('0'), self.qty_sqft - self.qty_received)
+        return max(Decimal('0'), self.qty_sqm - self.qty_received)
 
     @property
     def is_fully_received(self):
-        return self.qty_received >= self.qty_sqft
+        return self.qty_received >= self.qty_sqm
 
     @property
     def qty_display(self):
         if self.qty_unit == 'pcs' and self.pieces:
-            return f"{self.pieces:.0f} pcs × {self.sheet_length}×{self.sheet_width}ft = {self.qty_sqft:.2f} sqft"
-        return f"{self.qty_sqft:.2f} sqft"
+            return f"{self.pieces:.0f} pcs × {self.sheet_length}×{self.sheet_width}ft = {self.qty_sqm:.4f} sq.m"
+        return f"{self.qty_sqm:.4f} sq.m"
 
 
 class StockIn(models.Model):
@@ -447,48 +460,48 @@ class StockInItem(models.Model):
     stock_in      = models.ForeignKey(StockIn, on_delete=models.CASCADE, related_name='items')
     product       = models.ForeignKey(Product, on_delete=models.PROTECT)
     rack_location = models.CharField(max_length=20, blank=True)
-    qty_sqft      = models.DecimalField(max_digits=10, decimal_places=4,
-                        help_text='Always in sqft')
-    rate_per_sqft = models.DecimalField(max_digits=10, decimal_places=2)
+    qty_sqm       = models.DecimalField(max_digits=10, decimal_places=4,
+                        help_text='Quantity in sq.m')
+    rate_per_sqm  = models.DecimalField(max_digits=10, decimal_places=2)
     landed_rate   = models.DecimalField(max_digits=10, decimal_places=4, default=0)
     # Original unit
-    qty_unit      = models.CharField(max_length=5, choices=UNIT_CHOICES, default='sqft')
+    qty_unit      = models.CharField(max_length=5, choices=UNIT_CHOICES, default='sqm')
     pieces        = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     sheet_length  = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     sheet_width   = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
 
     @property
     def amount(self):
-        return self.qty_sqft * self.rate_per_sqft
+        return self.qty_sqm * self.rate_per_sqm
 
     @property
     def landed_amount(self):
-        return self.qty_sqft * self.landed_rate
+        return self.qty_sqm * self.landed_rate
 
     @property
     def qty_display(self):
         if self.qty_unit == 'pcs' and self.pieces:
-            return f"{self.pieces:.0f} pcs × {self.sheet_length}×{self.sheet_width}ft = {self.qty_sqft:.2f} sq.m"
-        return f"{self.qty_sqft:.2f} sq.m"
+            return f"{self.pieces:.0f} pcs × {self.sheet_length}×{self.sheet_width}ft = {self.qty_sqm:.4f} sq.m"
+        return f"{self.qty_sqm:.4f} sq.m"
 
     @property
     def qty_sold(self):
         from django.db.models import Sum
         result = SaleItem.objects.filter(
             grn_source=self.stock_in, product=self.product
-        ).aggregate(total=Sum('qty_sqft'))['total']
+        ).aggregate(total=Sum('qty_sqm'))['total']
         return result or Decimal('0')
 
     @property
     def qty_remaining(self):
-        return self.qty_sqft - self.qty_sold
+        return self.qty_sqm - self.qty_sold
 
     @property
     def revenue_from_batch(self):
         from django.db.models import Sum, F
         result = SaleItem.objects.filter(
             grn_source=self.stock_in, product=self.product
-        ).aggregate(total=Sum(F('qty_sqft') * F('rate_per_sqft')))['total']
+        ).aggregate(total=Sum(F('qty_sqm') * F('rate_per_sqm')))['total']
         return result or Decimal('0')
 
     @property
@@ -547,7 +560,7 @@ class StockDamage(models.Model):
     product     = models.ForeignKey('Product', on_delete=models.PROTECT, related_name='damages')
     date        = models.DateField(default=timezone.now)
     category    = models.CharField(max_length=20, choices=DAMAGE_CATEGORY, default='other')
-    qty_sqft    = models.DecimalField(max_digits=10, decimal_places=4)
+    qty_sqm     = models.DecimalField(max_digits=10, decimal_places=4)
     cost_rate   = models.DecimalField(max_digits=10, decimal_places=4, default=0,
                       help_text='Cost per sqft at time of damage (auto-filled from product avg cost)')
     description = models.TextField(blank=True)
@@ -559,11 +572,11 @@ class StockDamage(models.Model):
         ordering = ['-date', '-created_at']
 
     def __str__(self):
-        return f"{self.product} — {self.qty_sqft} sq.m ({self.get_category_display()})"
+        return f"{self.product} — {self.qty_sqm:.4f} sq.m ({self.get_category_display()})"
 
     @property
     def write_off_value(self):
-        return (self.qty_sqft * self.cost_rate).quantize(Decimal('0.01'))
+        return (self.qty_sqm * self.cost_rate).quantize(Decimal('0.01'))
 
 
 class Sale(models.Model):
@@ -692,19 +705,19 @@ class SaleItem(models.Model):
     sale         = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name='items')
     product      = models.ForeignKey(Product, on_delete=models.PROTECT)
     size         = models.CharField(max_length=30, blank=True)
-    qty_sqft     = models.DecimalField(max_digits=10, decimal_places=4)
-    rate_per_sqft= models.DecimalField(max_digits=10, decimal_places=2)
+    qty_sqm      = models.DecimalField(max_digits=10, decimal_places=4)
+    rate_per_sqm = models.DecimalField(max_digits=10, decimal_places=2)
     cost_at_sale = models.DecimalField(max_digits=10, decimal_places=4, default=0)
     grn_source   = models.ForeignKey(StockIn, on_delete=models.SET_NULL,
                        null=True, blank=True, related_name='sale_items')
 
     @property
     def amount(self):
-        return self.qty_sqft * self.rate_per_sqft
+        return self.qty_sqm * self.rate_per_sqm
 
     @property
     def cost_amount(self):
-        return self.qty_sqft * self.cost_at_sale
+        return self.qty_sqm * self.cost_at_sale
 
     @property
     def gross_profit(self):
@@ -826,15 +839,15 @@ class EstimationItem(models.Model):
     estimation   = models.ForeignKey(Estimation, on_delete=models.CASCADE, related_name='est_items')
     product      = models.ForeignKey(Product, on_delete=models.PROTECT, null=True, blank=True)
     description  = models.CharField(max_length=200, blank=True)
-    qty_sqft     = models.DecimalField(max_digits=10, decimal_places=2)
-    rate_per_sqft= models.DecimalField(max_digits=10, decimal_places=2)
+    qty_sqm      = models.DecimalField(max_digits=10, decimal_places=4)
+    rate_per_sqm = models.DecimalField(max_digits=10, decimal_places=2)
     pieces       = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     sheet_length = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     sheet_width  = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
 
     @property
     def amount(self):
-        return self.qty_sqft * self.rate_per_sqft
+        return self.qty_sqm * self.rate_per_sqm
 
     @property
     def display_desc(self):

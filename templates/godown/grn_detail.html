@@ -101,7 +101,7 @@
       <td>{{ d.date }}</td>
       <td>{{ d.product.display_name }}</td>
       <td><span class="bv br" style="font-size:10px;">{{ d.get_category_display }}</span></td>
-      <td style="color:#b33a36;font-weight:600;">{{ d.qty_sqft|floatformat:2 }}</td>
+      <td style="color:#b33a36;font-weight:600;">{{ d.qty_sqm|floatformat:2 }}</td>
       <td style="color:#b33a36;font-weight:600;">₹{{ d.write_off_value|floatformat:0 }}</td>
       <td style="font-size:12px;color:var(--tm);">{{ d.description|default:"—" }}</td>
     </tr>

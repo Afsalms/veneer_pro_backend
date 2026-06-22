@@ -34,22 +34,22 @@ class Command(BaseCommand):
             for prod in products:
                 received = StockInItem.objects.filter(
                     product=prod, stock_in__godown=godown
-                ).aggregate(t=Coalesce(Sum('qty_sqft'), Decimal('0')))['t']
+                ).aggregate(t=Coalesce(Sum('qty_sqm'), Decimal('0')))['t']
 
                 sold = SaleItem.objects.filter(
                     product=prod, sale__godown=godown
-                ).aggregate(t=Coalesce(Sum('qty_sqft'), Decimal('0')))['t']
+                ).aggregate(t=Coalesce(Sum('qty_sqm'), Decimal('0')))['t']
 
                 damaged = StockDamage.objects.filter(
                     product=prod, godown=godown
-                ).aggregate(t=Coalesce(Sum('qty_sqft'), Decimal('0')))['t']
+                ).aggregate(t=Coalesce(Sum('qty_sqm'), Decimal('0')))['t']
 
                 correct = received - sold - damaged
 
-                if abs(correct - prod.stock_qty) > Decimal('0.01'):
+                if abs(correct - prod.stock_qty) > Decimal('0.0001'):
                     self.stdout.write(
                         f'  {"[DRY RUN] " if dry_run else ""}FIXED {prod.display_name}: '
-                        f'{prod.stock_qty:.2f} → {correct:.2f} sqft '
+                        f'{prod.stock_qty:.2f} → {correct:.4f} sq.m '
                         f'(received={received:.0f}, sold={sold:.0f}, damaged={damaged:.0f})'
                     )
                     if not dry_run:
@@ -57,7 +57,7 @@ class Command(BaseCommand):
                         prod.save(update_fields=['stock_qty'])
                     total_fixed += 1
                 else:
-                    self.stdout.write(f'  ✓ {prod.display_name}: {prod.stock_qty:.2f} sqft — OK')
+                    self.stdout.write(f'  ✓ {prod.display_name}: {prod.stock_qty:.4f} sq.m — OK')
 
         self.stdout.write(
             self.style.SUCCESS(f'\nDone. {total_fixed} product(s) {"would be " if dry_run else ""}corrected.')

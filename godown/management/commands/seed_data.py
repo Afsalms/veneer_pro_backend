@@ -44,11 +44,11 @@ class Command(BaseCommand):
         c4 = Customer.objects.create(godown=godown, name='Greenline Decor', phone='+91 99470 44556', location='Kozhikode', state='Kerala', credit_limit=100000)
 
         # Products
-        p1 = Product.objects.create(godown=godown, species='Teak', thickness='0.6mm', cut_type='Flat Cut', finish='Natural', buy_rate=32, sale_rate=45, min_stock=500, sheet_length=8, sheet_width=4, stock_qty=0)
-        p2 = Product.objects.create(godown=godown, species='Oak', thickness='0.8mm', cut_type='Rift Cut', finish='Natural', buy_rate=28, sale_rate=38, min_stock=600, sheet_length=8, sheet_width=4, stock_qty=0)
-        p3 = Product.objects.create(godown=godown, species='Walnut', thickness='0.6mm', cut_type='Flat Cut', finish='Natural', buy_rate=55, sale_rate=70, min_stock=400, sheet_length=8, sheet_width=4, stock_qty=0)
-        p4 = Product.objects.create(godown=godown, species='Rosewood', thickness='0.5mm', cut_type='Quarter Cut', finish='Natural', buy_rate=72, sale_rate=95, min_stock=300, sheet_length=7, sheet_width=3, stock_qty=0)
-        p5 = Product.objects.create(godown=godown, species='Sapele', thickness='0.5mm', cut_type='Quarter Cut', finish='Natural', buy_rate=42, sale_rate=58, min_stock=400, sheet_length=8, sheet_width=4, stock_qty=0)
+        p1 = Product.objects.create(godown=godown, species='Teak', thickness='0.6mm', cut_type='Flat Cut', finish='Natural', buy_rate=32, sale_rate=45, min_stock=500, sheet_length=8, sheet_width=4, sheet_sqm=Decimal('2.9728'), stock_qty=0)
+        p2 = Product.objects.create(godown=godown, species='Oak', thickness='0.8mm', cut_type='Rift Cut', finish='Natural', buy_rate=28, sale_rate=38, min_stock=600, sheet_length=8, sheet_width=4, sheet_sqm=Decimal('2.9728'), stock_qty=0)
+        p3 = Product.objects.create(godown=godown, species='Walnut', thickness='0.6mm', cut_type='Flat Cut', finish='Natural', buy_rate=55, sale_rate=70, min_stock=400, sheet_length=8, sheet_width=4, sheet_sqm=Decimal('2.9728'), stock_qty=0)
+        p4 = Product.objects.create(godown=godown, species='Rosewood', thickness='0.5mm', cut_type='Quarter Cut', finish='Natural', buy_rate=72, sale_rate=95, min_stock=300, sheet_length=7, sheet_width=3, sheet_sqm=Decimal('1.9509'), stock_qty=0)
+        p5 = Product.objects.create(godown=godown, species='Sapele', thickness='0.5mm', cut_type='Quarter Cut', finish='Natural', buy_rate=42, sale_rate=58, min_stock=400, sheet_length=8, sheet_width=4, sheet_sqm=Decimal('2.9728'), stock_qty=0)
 
         def make_grn(supplier, items, advance=0, date_offset=0, landing=None):
             num = GodownSequence.format_number(godown, 'grn')
@@ -58,7 +58,7 @@ class Command(BaseCommand):
             for prod, qty, rate in items:
                 prod.update_avg_cost(qty, rate)
                 si = StockInItem.objects.create(stock_in=grn, product=prod,
-                    qty_sqft=Decimal(str(qty)), rate_per_sqft=Decimal(str(rate)), landed_rate=Decimal(str(rate)),
+                    qty_sqm=Decimal(str(qty)), rate_per_sqm=Decimal(str(rate)), landed_rate=Decimal(str(rate)),
                     rack_location=f'Rack {prod.species[0]}-1')
                 prod.stock_qty += Decimal(str(qty)); prod.save()
             if landing:
@@ -67,18 +67,18 @@ class Command(BaseCommand):
                 # Recalculate landed rates with landing expenses
                 total_landing = sum(Decimal(str(a)) for _, a in landing)
                 si_items_list = list(grn.items.all())
-                total_qty = sum(si.qty_sqft for si in si_items_list)
+                total_qty = sum(si.qty_sqm for si in si_items_list)
                 if total_qty > 0:
                     for si in si_items_list:
-                        share = (si.qty_sqft / total_qty) * total_landing
-                        si.landed_rate = si.rate_per_sqft + (share / si.qty_sqft)
+                        share = (si.qty_sqm / total_qty) * total_landing
+                        si.landed_rate = si.rate_per_sqm + (share / si.qty_sqm)
                         si.save(update_fields=['landed_rate'])
                     # Update avg_cost for affected products
                     for si in si_items_list:
                         p = si.product
                         all_items = StockInItem.objects.filter(product=p)
-                        rv = sum(i.qty_sqft * (i.landed_rate or i.rate_per_sqft) for i in all_items)
-                        rq = sum(i.qty_sqft for i in all_items)
+                        rv = sum(i.qty_sqm * (i.landed_rate or i.rate_per_sqm) for i in all_items)
+                        rq = sum(i.qty_sqm for i in all_items)
                         if rq > 0:
                             p.avg_cost = rv / rq
                             p.save(update_fields=['avg_cost'])
@@ -98,7 +98,7 @@ class Command(BaseCommand):
             for prod, qty, rate in items:
                 cost_snap = prod.avg_cost
                 SaleItem.objects.create(sale=sale, product=prod,
-                    qty_sqft=Decimal(str(qty)), rate_per_sqft=Decimal(str(rate)),
+                    qty_sqm=Decimal(str(qty)), rate_per_sqm=Decimal(str(rate)),
                     cost_at_sale=cost_snap, grn_source=grn1)
                 prod.stock_qty -= Decimal(str(qty)); prod.save()
             return sale
@@ -120,7 +120,7 @@ class Command(BaseCommand):
         po1 = PurchaseOrder.objects.create(godown=godown, po_number=po_num, supplier=sup1,
             date=today-timedelta(days=5), expected_arrival=today+timedelta(days=2),
             advance_paid=35000, advance_mode='bank')
-        PurchaseOrderItem.objects.create(po=po1, product=p1, qty_sqft=2000, rate_per_sqft=32)
+        PurchaseOrderItem.objects.create(po=po1, product=p1, qty_sqm=2000, rate_per_sqm=32)
 
         # Load lookup defaults for this godown
         from godown.management.commands.load_lookup_defaults import DEFAULTS

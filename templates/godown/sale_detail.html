@@ -38,7 +38,7 @@
     <tr>
       <td style="font-weight:500;">{{ item.product.display_name }}</td>
       <td style="color:var(--tm);">{{ item.size|default:"—" }}</td>
-      <td>{{ item.qty_sqft|floatformat:2 }}</td>
+      <td>{{ item.qty_sqm|floatformat:2 }}</td>
       <td>₹{{ item.rate_per_sq.m }}</td>
       <td style="font-weight:600;">₹{{ item.amount|floatformat:0 }}</td>
       <td style="color:var(--tm);font-size:12px;">₹{{ item.cost_amount|floatformat:0 }}</td>

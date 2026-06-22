@@ -195,9 +195,7 @@
 <script>
 const GST_RATE = {{ godown_obj.gst_rate|floatformat:2 }};
 
-const SQFT_TO_SQM = 0.0929;
-const SQM_TO_SQFT = 1 / SQFT_TO_SQM;
-// Product data — stock stored internally, displayed in sq.m
+// Product data — stock stored and displayed in sq.m (no conversion needed)
 const PRODUCTS = {
   {% for p in products %}
   {{ p.pk }}: {
@@ -218,8 +216,7 @@ let saleCount = 0;
 function productOpts() {
   let opts = '<option value="">Select product</option>';
   for (const [id, p] of Object.entries(PRODUCTS)) {
-    const stockSqm = p.stock * SQFT_TO_SQM;
-    const label = p.stock <= 0 ? ' ⚠ Out of stock' : ` (${stockSqm.toFixed(2)} sq.m available)`;
+    const label = p.stock <= 0 ? ' ⚠ Out of stock' : ` (${p.stock.toFixed(2)} sq.m available)`;
     opts += `<option value="${p.id}" data-stock="${p.stock}" data-rate="${p.sale_rate}"
              ${p.stock <= 0 ? 'style="color:#b33a36;"' : ''}>${p.name}${label}</option>`;
   }
@@ -249,12 +246,12 @@ function saleItemHTML(n) {
       <div class="frow">
         <div class="fthird">
           <label class="fl">Qty (sq.m) *</label>
-          <input class="fc sale-qty" name="qty_sqft[]" type="number" step="0.01" min="0.01"
+          <input class="fc sale-qty" name="qty_sqm[]" type="number" step="0.01" min="0.01"
                  placeholder="0.00" oninput="onSaleQtyInput(this)">
         </div>
         <div class="fthird">
           <label class="fl">Rate (₹/sq\.m) *</label>
-          <input class="fc" name="rate_per_sqft[]" type="number" step="0.01" min="0.01"
+          <input class="fc" name="rate_per_sqm[]" type="number" step="0.01" min="0.01"
                  placeholder="0.00" oninput="calcSaleLine(this.closest('.line-item'))">
         </div>
         <div class="fthird">
@@ -299,7 +296,7 @@ function onSaleProductChange(sel) {
   const li    = sel.closest('.line-item');
   const pid   = sel.value;
   const bar   = li.querySelector('.stock-info-bar');
-  const rateEl = li.querySelector('[name="rate_per_sqft[]"]');
+  const rateEl = li.querySelector('[name="rate_per_sqm[]"]');
 
   if (!pid) { bar.style.display = 'none'; return; }
 
@@ -307,7 +304,7 @@ function onSaleProductChange(sel) {
   if (!prod) return;
 
   if (rateEl && !rateEl.value && prod.sale_rate > 0)
-    rateEl.value = (prod.sale_rate / SQFT_TO_SQM).toFixed(2);  // convert rate to per sq.m
+    rateEl.value = prod.sale_rate.toFixed(2);  // already ₹/sq.m
 
   bar.style.display = '';
   if (prod.stock <= 0) {
@@ -315,10 +312,10 @@ function onSaleProductChange(sel) {
     bar.innerHTML = `<i class="bi bi-exclamation-triangle"></i> <strong>Out of stock</strong> — ${prod.display}`;
   } else if (prod.status === 'critical' || prod.status === 'low') {
     bar.style.background = '#fef6e4'; bar.style.border = '1px solid #fde8a0'; bar.style.color = '#a06a10';
-    bar.innerHTML = `<i class="bi bi-exclamation-circle"></i> <strong>${(prod.stock * SQFT_TO_SQM).toFixed(2)} sq.m</strong> available · ${prod.status === 'critical' ? 'Critical' : 'Low'} stock`;
+    bar.innerHTML = `<i class="bi bi-exclamation-circle"></i> <strong>${prod.stock.toFixed(2)} sq.m</strong> available · ${prod.status === 'critical' ? 'Critical' : 'Low'} stock`;
   } else {
     bar.style.background = '#eaf5e8'; bar.style.border = '1px solid #c3e6cb'; bar.style.color = '#2d6a27';
-    bar.innerHTML = `<i class="bi bi-check-circle"></i> <strong>${(prod.stock * SQFT_TO_SQM).toFixed(2)} sq.m</strong> available`;
+    bar.innerHTML = `<i class="bi bi-check-circle"></i> <strong>${prod.stock.toFixed(2)} sq.m</strong> available`;
   }
 
   const qtyEl = li.querySelector('.sale-qty');
@@ -336,15 +333,14 @@ function onSaleQtyInput(qtyEl) {
   if (pid && qty > 0) {
     const prod = PRODUCTS[pid];
     if (prod) {
-      const stockSqm = prod.stock * SQFT_TO_SQM;  // prod.stock is internal unit
-      const qtySqft  = qty * SQM_TO_SQFT;          // user entered sq.m → convert for comparison
-      if (qtySqft > prod.stock) {
+      // qty and prod.stock are both sq.m — direct comparison
+      if (qty > prod.stock) {
         bar.style.display = '';
         bar.style.background = '#fdecea'; bar.style.border = '1px solid #f5c6cb'; bar.style.color = '#b33a36';
-        bar.innerHTML = `<i class="bi bi-x-circle"></i> <strong>Insufficient stock.</strong> Entered ${qty.toFixed(4)} sq.m · only <strong>${stockSqm.toFixed(4)} sq.m</strong> available.`;
+        bar.innerHTML = `<i class="bi bi-x-circle"></i> <strong>Insufficient stock.</strong> Entered ${qty.toFixed(4)} sq.m · only <strong>${prod.stock.toFixed(4)} sq.m</strong> available.`;
         qtyEl.style.borderColor = '#b33a36';
       } else {
-        const remSqm = stockSqm - qty;
+        const remSqm = prod.stock - qty;
         bar.style.background = remSqm < 10 ? '#fef6e4' : '#eaf5e8';
         bar.style.border     = remSqm < 10 ? '1px solid #fde8a0' : '1px solid #c3e6cb';
         bar.style.color      = remSqm < 10 ? '#a06a10' : '#2d6a27';
@@ -359,7 +355,7 @@ function onSaleQtyInput(qtyEl) {
 // ── Totals ────────────────────────────────────────────────────────
 function calcSaleLine(li) {
   const qty  = parseFloat(li.querySelector('.sale-qty')?.value) || 0;  // in sq.m
-  const rate = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;  // per sq.m (will be converted on submit)
+  const rate = parseFloat(li.querySelector('[name="rate_per_sqm[]"]')?.value) || 0;  // per sq.m (will be converted on submit)
   const amt  = qty * rate;  // sq.m × ₹/sq.m = ₹ (correct)
   const el   = li.querySelector('.li-amt');
   if (el) el.value = amt > 0 ? amt.toLocaleString('en-IN', {maximumFractionDigits:2}) : '';
@@ -454,8 +450,20 @@ function checkCreditLimitLive() {
     bar.style.display = '';
     bar.style.background = '#fef6e4'; bar.style.border = '1px solid #fde8a0';
     bar.innerHTML = `<i class="bi bi-exclamation-triangle" style="color:#a06a10;"></i> <strong style="color:#a06a10;">Credit limit warning.</strong> This sale ₹${saleTotal.toLocaleString('en-IN')} + outstanding ₹${info.outstanding.toLocaleString('en-IN')} = ₹${newOutstanding.toLocaleString('en-IN')} — exceeds limit by <strong>₹${over.toLocaleString('en-IN')}</strong>.`;
-  } else if (saleTotal > 0) {
-    onCustomerChange(document.querySelector('[name="customer"]'));
+  } else {
+    // No warning needed — just refresh the customer bar without calling back into checkCreditLimitLive
+    const sel = document.querySelector('[name="customer"]');
+    if (sel && sel.value) {
+      const opt = sel.options[sel.selectedIndex];
+      const limit       = parseFloat(opt.dataset.creditLimit) || 0;
+      const outstanding = parseFloat(opt.dataset.outstanding)  || 0;
+      const available   = Math.max(0, limit - outstanding);
+      if (limit > 0) {
+        bar.style.display = '';
+        bar.style.background = '#eaf5e8'; bar.style.border = '1px solid #c3e6cb';
+        bar.innerHTML = `<i class="bi bi-credit-card" style="color:#2d6a27;"></i> Limit: <strong>₹${limit.toLocaleString('en-IN')}</strong> · Outstanding: <strong>₹${outstanding.toLocaleString('en-IN')}</strong> · <strong style="color:#2d6a27;">Available: ₹${available.toLocaleString('en-IN')}</strong>`;
+      }
+    }
   }
 }
 
@@ -478,19 +486,17 @@ document.getElementById('sale-submit').addEventListener('click', async function(
   document.querySelectorAll('#sale-items .line-item').forEach((li, idx) => {
     const pid  = li.querySelector('[name="product[]"]')?.value;
     const qty  = parseFloat(li.querySelector('.sale-qty')?.value) || 0;
-    const rate = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;
+    const rate = parseFloat(li.querySelector('[name="rate_per_sqm[]"]')?.value) || 0;
     if (!pid && qty === 0 && rate === 0) return;
     const n = idx + 1;
     if (!pid)   { errors.push(`Item ${n}: Select a product.`); li.querySelector('[name="product[]"]').style.borderColor = '#b33a36'; }
     if (qty <= 0)  { errors.push(`Item ${n}: Enter quantity.`); li.querySelector('.sale-qty').style.borderColor = '#b33a36'; }
-    if (rate <= 0) { errors.push(`Item ${n}: Enter rate.`); li.querySelector('[name="rate_per_sqft[]"]').style.borderColor = '#b33a36'; }
+    if (rate <= 0) { errors.push(`Item ${n}: Enter rate.`); li.querySelector('[name="rate_per_sqm[]"]').style.borderColor = '#b33a36'; }
     if (pid && qty > 0) {
       const prod = PRODUCTS[pid];
       if (prod) {
-        const qtySqft = qty * SQM_TO_SQFT;
-        const stockSqm = prod.stock * SQFT_TO_SQM;
         if (prod.stock <= 0) overStockErrors.push(`${prod.display} is out of stock.`);
-        else if (qtySqft > prod.stock) overStockErrors.push(`${prod.display}: only ${stockSqm.toFixed(4)} sq.m available, entered ${qty.toFixed(4)} sq.m.`);
+        else if (qty > prod.stock) overStockErrors.push(`${prod.display}: only ${prod.stock.toFixed(4)} sq.m available, entered ${qty.toFixed(4)} sq.m.`);
       }
     }
     if (pid && qty > 0 && rate > 0) hasValidItem = true;
@@ -499,14 +505,14 @@ document.getElementById('sale-submit').addEventListener('click', async function(
   if (!hasValidItem && errors.length === 0)
     errors.push('Add at least one item with product, quantity and rate.');
 
-  // Credit limit
+  // Credit limit check
   const creditInfo = getCreditInfo();
   if (creditInfo && creditInfo.limit > 0) {
     let saleTotal = 0;
     document.querySelectorAll('#sale-items .li-amt').forEach(a => {
       saleTotal += parseFloat((a.value || '0').replace(/,/g, '')) || 0;
     });
-    if (info.outstanding + saleTotal > creditInfo.limit) {
+    if (creditInfo.outstanding + saleTotal > creditInfo.limit) {
       const over = (creditInfo.outstanding + saleTotal - creditInfo.limit).toLocaleString('en-IN');
       const ok = await vp.confirm(`This sale will exceed the customer's credit limit by ₹${over}.\nProceed anyway?`, 'Credit Limit Exceeded', 'warning');
       if (!ok) return;

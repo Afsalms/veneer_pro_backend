@@ -9,6 +9,8 @@ from functools import wraps
 from decimal import Decimal
 from datetime import timedelta, date
 
+MAX_USERS_PER_GODOWN = 5   # maximum users allowed per godown
+
 from .models import (
     Godown, GodownSequence, UserProfile,
     Customer, Supplier, Product,
@@ -208,9 +210,13 @@ def ctx(request, extra=None):
 def user_list(request):
     godown = get_godown(request)
     users = User.objects.filter(profile__godown=godown).select_related('profile')
+    user_count = users.count()
     return render(request, 'godown/users.html', ctx(request, {
         'active': 'users',
-        'users_data': [{'user': u, 'profile': u.profile} for u in users]
+        'users_data': [{'user': u, 'profile': u.profile} for u in users],
+        'user_count': user_count,
+        'max_users': MAX_USERS_PER_GODOWN,
+        'slots_remaining': max(0, MAX_USERS_PER_GODOWN - user_count),
     }))
 
 @admin_req
@@ -321,7 +327,7 @@ def dashboard(request):
     rev_agg = SaleItem.objects.filter(
         sale__godown=godown, sale__date__gte=date_from, sale__date__lte=date_to
     ).aggregate(total=Coalesce(Sum(
-        ExpressionWrapper(F('qty_sqft') * F('rate_per_sqft'), output_field=DecimalField())
+        ExpressionWrapper(F('qty_sqm') * F('rate_per_sqm'), output_field=DecimalField())
     ), 0, output_field=DecimalField()))
     sales_total = rev_agg['total']
 
@@ -329,7 +335,7 @@ def dashboard(request):
     prev_rev_agg = SaleItem.objects.filter(
         sale__godown=godown, sale__date__gte=prev_from, sale__date__lte=prev_to
     ).aggregate(total=Coalesce(Sum(
-        ExpressionWrapper(F('qty_sqft') * F('rate_per_sqft'), output_field=DecimalField())
+        ExpressionWrapper(F('qty_sqm') * F('rate_per_sqm'), output_field=DecimalField())
     ), 0, output_field=DecimalField()))
     prev_revenue = prev_rev_agg['total']
     rev_delta_pct = None
@@ -340,7 +346,7 @@ def dashboard(request):
     cogs_agg = StockInItem.objects.filter(
         stock_in__godown=godown, stock_in__date__gte=date_from, stock_in__date__lte=date_to
     ).aggregate(total=Coalesce(Sum(
-        ExpressionWrapper(F('qty_sqft') * F('rate_per_sqft'), output_field=DecimalField())
+        ExpressionWrapper(F('qty_sqm') * F('rate_per_sqm'), output_field=DecimalField())
     ), 0, output_field=DecimalField()))
     land_agg = LandingExpense.objects.filter(
         stock_in__godown=godown, stock_in__date__gte=date_from, stock_in__date__lte=date_to
@@ -357,7 +363,7 @@ def dashboard(request):
     # Receivables — DB aggregated: total billed - total received
     recv_agg = SaleItem.objects.filter(sale__godown=godown).aggregate(
         billed=Coalesce(Sum(
-            ExpressionWrapper(F('qty_sqft') * F('rate_per_sqft'), output_field=DecimalField())
+            ExpressionWrapper(F('qty_sqm') * F('rate_per_sqm'), output_field=DecimalField())
         ), 0, output_field=DecimalField())
     )
     recv_received = Sale.objects.filter(godown=godown).aggregate(
@@ -368,7 +374,7 @@ def dashboard(request):
     # Payables — DB aggregated: total GRN cost - advance paid - amount paid
     pay_items = StockInItem.objects.filter(stock_in__godown=godown).aggregate(
         total=Coalesce(Sum(
-            ExpressionWrapper(F('qty_sqft') * F('rate_per_sqft'), output_field=DecimalField())
+            ExpressionWrapper(F('qty_sqm') * F('rate_per_sqm'), output_field=DecimalField())
         ), 0, output_field=DecimalField())
     )
     pay_landing = LandingExpense.objects.filter(stock_in__godown=godown).aggregate(
@@ -387,14 +393,14 @@ def dashboard(request):
     gst_agg = SaleItem.objects.filter(
         sale__godown=godown, sale__date__gte=date_from, sale__date__lte=date_to
     ).aggregate(total=Coalesce(Sum(
-        ExpressionWrapper(F('qty_sqft') * F('rate_per_sqft'), output_field=DecimalField())
+        ExpressionWrapper(F('qty_sqm') * F('rate_per_sqm'), output_field=DecimalField())
     ), 0, output_field=DecimalField()))
     taxable_sales = gst_agg['total']
     gst_collected = (taxable_sales * godown.gst_rate / 100).quantize(Decimal('0.01'))
     purchase_items_agg = StockInItem.objects.filter(
         stock_in__godown=godown, stock_in__date__gte=date_from, stock_in__date__lte=date_to
     ).aggregate(total=Coalesce(Sum(
-        ExpressionWrapper(F('qty_sqft') * F('rate_per_sqft'), output_field=DecimalField())
+        ExpressionWrapper(F('qty_sqm') * F('rate_per_sqm'), output_field=DecimalField())
     ), 0, output_field=DecimalField()))
     purchase_value = purchase_items_agg['total']
     itc      = (purchase_value * godown.gst_rate / 100).quantize(Decimal('0.01'))
@@ -476,7 +482,7 @@ def customers(request):
         sale_count=Count('sales', distinct=True),
         # Total billed = sum of (qty * rate) across all sale items
         db_total_billed=Coalesce(Sum(
-            ExpressionWrapper(F('sales__items__qty_sqft') * F('sales__items__rate_per_sqft'),
+            ExpressionWrapper(F('sales__items__qty_sqm') * F('sales__items__rate_per_sqm'),
                               output_field=DecimalField())
         ), 0, output_field=DecimalField()),
         db_total_received=Coalesce(Sum('sales__amount_received', output_field=DecimalField()),
@@ -627,6 +633,11 @@ def products(request):
 def add_product(request):
     godown = get_godown(request)
     if request.method == 'POST':
+        sl  = Decimal(request.POST.get('sheet_length', 8) or 8)
+        sw  = Decimal(request.POST.get('sheet_width',  4) or 4)
+        auto_sqm = (sl * sw * Decimal('0.0929')).quantize(Decimal('0.0001'))
+        ov_raw   = request.POST.get('sheet_sqm_override', '').strip()
+        override = Decimal(ov_raw).quantize(Decimal('0.0001')) if ov_raw else None
         Product.objects.create(
             godown=godown, species=request.POST['species'],
             thickness=request.POST.get('thickness','0.6mm'),
@@ -636,8 +647,8 @@ def add_product(request):
             sale_rate=request.POST.get('sale_rate',0) or 0,
             min_stock=request.POST.get('min_stock',500) or 500,
             hsn_code=request.POST.get('hsn_code','4408'),
-            sheet_length=request.POST.get('sheet_length',8) or 8,
-            sheet_width=request.POST.get('sheet_width',4) or 4,
+            sheet_length=sl, sheet_width=sw,
+            sheet_sqm=auto_sqm, sheet_sqm_override=override,
         )
         messages.success(request, 'Product added.')
         return redirect('products')
@@ -657,11 +668,16 @@ def edit_product(request, pk):
     godown = get_godown(request)
     p = get_object_or_404(Product, pk=pk, godown=godown)
     if request.method == 'POST':
+        sl  = Decimal(request.POST.get('sheet_length', 8) or 8)
+        sw  = Decimal(request.POST.get('sheet_width',  4) or 4)
+        ov_raw = request.POST.get('sheet_sqm_override', '').strip()
         p.species=request.POST['species']; p.thickness=request.POST.get('thickness','0.6mm')
         p.cut_type=request.POST.get('cut_type','Flat Cut'); p.finish=request.POST.get('finish','Natural')
         p.buy_rate=request.POST.get('buy_rate',0) or 0; p.sale_rate=request.POST.get('sale_rate',0) or 0
         p.min_stock=request.POST.get('min_stock',500) or 500; p.hsn_code=request.POST.get('hsn_code','4408')
-        p.sheet_length=request.POST.get('sheet_length',8) or 8; p.sheet_width=request.POST.get('sheet_width',4) or 4
+        p.sheet_length=sl; p.sheet_width=sw
+        p.sheet_sqm = (sl * sw * Decimal('0.0929')).quantize(Decimal('0.0001'))
+        p.sheet_sqm_override = Decimal(ov_raw).quantize(Decimal('0.0001')) if ov_raw else None
         p.save()
         messages.success(request, 'Product updated.')
         return redirect('products')
@@ -679,7 +695,7 @@ def product_api(request, pk):
     p = get_object_or_404(Product, pk=pk, godown=godown)
     return JsonResponse({'id':p.pk,'display_name':p.display_name,
         'sheet_length':float(p.sheet_length),'sheet_width':float(p.sheet_width),
-        'sheet_sqft':float(p.sheet_sqft),'buy_rate':float(p.buy_rate),
+        'sheet_sqm':float(p.effective_sheet_sqm),'sheet_sqm_override':float(p.sheet_sqm_override) if p.sheet_sqm_override else None,'buy_rate':float(p.buy_rate),
         'sale_rate':float(p.sale_rate),'stock_qty':float(p.stock_qty)})
 
 
@@ -697,7 +713,7 @@ def po_list(request):
                 'pk': p.pk, 'po_number': p.po_number,
                 'date': str(p.date), 'supplier': p.supplier.name,
                 'expected_arrival': str(p.expected_arrival) if p.expected_arrival else '',
-                'items': [{'product': i.product.display_name, 'qty_ordered': float(i.qty_sqft), 'qty_received': float(i.qty_received), 'is_fully': i.is_fully_received} for i in p.po_items.all()],
+                'items': [{'product': i.product.display_name, 'qty_ordered': float(i.qty_sqm), 'qty_received': float(i.qty_received), 'is_fully': i.is_fully_received} for i in p.po_items.all()],
                 'total_value': float(p.total_value),
                 'advance_paid': float(p.advance_paid),
                 'status': p.status, 'status_display': p.get_status_display(),
@@ -741,22 +757,69 @@ def _save_po_items(request, po, products_list):
     pieces  = request.POST.getlist('pieces[]')
     lengths = request.POST.getlist('sheet_length[]')
     widths  = request.POST.getlist('sheet_width[]')
-    rates   = request.POST.getlist('rate_per_sqft[]')
-    qtys    = request.POST.getlist('qty_sqft[]')
-    for i, pid in enumerate(request.POST.getlist('product[]')):
+    rates   = request.POST.getlist('rate_per_sqm[]')
+    # Each line item has TWO qty_sqm[] hidden inputs (sqm-section + pcs-section).
+    # Only one will be non-empty depending on the selected unit.
+    # Group them by line item: slot 0 and 1 belong to item 0, slot 2 and 3 to item 1, etc.
+    all_qtys = request.POST.getlist('qty_sqm[]')
+    products = request.POST.getlist('product[]')
+    n_items  = len(products)
+    # If two hidden inputs per item: all_qtys length = n_items * 2
+    # If one hidden input per item (sqm-only mode): all_qtys length = n_items
+    two_per_item = len(all_qtys) == n_items * 2
+
+    for i, pid in enumerate(products):
         if not pid: continue
-        qty  = Decimal(qtys[i]) if i < len(qtys) and qtys[i] else Decimal('0')
+        if two_per_item:
+            # Pick whichever of the two slots for this item is non-empty
+            a = all_qtys[i * 2]     # sqm-section hidden
+            b = all_qtys[i * 2 + 1] # pcs-section hidden
+            qty_str = b if b else a
+        else:
+            qty_str = all_qtys[i] if i < len(all_qtys) else ''
+        qty  = Decimal(qty_str) if qty_str else Decimal('0')
         rate = Decimal(rates[i]) if i < len(rates) and rates[i] else Decimal('0')
         if qty <= 0 or rate <= 0: continue
-        unit = units[i] if i < len(units) else 'sqft'
+        unit = units[i] if i < len(units) else 'sqm'
         pcs  = Decimal(pieces[i]) if i < len(pieces) and pieces[i] else None
         l    = Decimal(lengths[i]) if i < len(lengths) and lengths[i] else None
         w    = Decimal(widths[i]) if i < len(widths) and widths[i] else None
         PurchaseOrderItem.objects.create(
             po=po, product_id=pid,
-            qty_sqft=qty, rate_per_sqft=rate,
+            qty_sqm=qty, rate_per_sqm=rate,
             qty_unit=unit, pieces=pcs, sheet_length=l, sheet_width=w,
         )
+
+@login_req
+def edit_po(request, pk):
+    godown = get_godown(request)
+    po = get_object_or_404(PurchaseOrder, pk=pk, godown=godown)
+    # Only allow editing open POs
+    if po.status not in ('pending', 'partial'):
+        messages.error(request, 'Only open or partial POs can be edited.')
+        return redirect('po_detail', pk=pk)
+    products_list = Product.objects.filter(godown=godown)
+    suppliers_list = Supplier.objects.filter(godown=godown)
+    if request.method == 'POST':
+        with transaction.atomic():
+            po.supplier_id = request.POST['supplier']
+            po.date        = request.POST['date']
+            po.currency    = request.POST.get('currency', 'INR')
+            po.notes       = request.POST.get('notes', '')
+            po.save()
+            # Replace all items (only safe if no GRN received yet)
+            if not po.grns.exists():
+                po.po_items.all().delete()
+                _save_po_items(request, po, products_list)
+            else:
+                messages.warning(request, 'GRN already recorded — items cannot be changed. Other details updated.')
+        messages.success(request, f'PO {po.po_number} updated.')
+        return redirect('po_detail', pk=pk)
+    return render(request, 'godown/edit_po.html', ctx(request, {
+        'active': 'po', 'po': po,
+        'suppliers': suppliers_list, 'products': products_list,
+    }))
+
 
 @login_req
 def po_detail(request, pk):
@@ -796,7 +859,7 @@ def stock_in_list(request):
                 'pk': g.pk, 'grn_number': g.grn_number,
                 'date': str(g.date), 'supplier': g.supplier.name,
                 'po_number': g.po.po_number if g.po else '',
-                'products': [f"{i.qty_display} @ ₹{i.rate_per_sqft}" for i in g.items.all()],
+                'products': [f"{i.qty_display} @ ₹{i.rate_per_sqm}" for i in g.items.all()],
                 'total_amount': float(g.total_amount),
                 'landing_total': float(g.landing_expenses_total),
                 'amount_paid': float(g.amount_paid_inr),
@@ -854,24 +917,35 @@ def _save_grn_items(request, grn, products_list):
     pieces = request.POST.getlist('pieces[]')
     lengths= request.POST.getlist('sheet_length[]')
     widths = request.POST.getlist('sheet_width[]')
-    rates  = request.POST.getlist('rate_per_sqft[]')
-    qtys   = request.POST.getlist('qty_sqft[]')
+    rates  = request.POST.getlist('rate_per_sqm[]')
     racks  = request.POST.getlist('rack[]')
+    # Each line item has TWO qty_sqm[] hidden inputs (sqm-section + pcs-section).
+    all_qtys = request.POST.getlist('qty_sqm[]')
+    products = request.POST.getlist('product[]')
+    n_items  = len(products)
+    two_per_item = len(all_qtys) == n_items * 2
+
     created = []
-    for i, pid in enumerate(request.POST.getlist('product[]')):
+    for i, pid in enumerate(products):
         if not pid: continue
-        qty  = Decimal(qtys[i]) if i < len(qtys) and qtys[i] else Decimal('0')
+        if two_per_item:
+            a = all_qtys[i * 2]
+            b = all_qtys[i * 2 + 1]
+            qty_str = b if b else a
+        else:
+            qty_str = all_qtys[i] if i < len(all_qtys) else ''
+        qty  = Decimal(qty_str) if qty_str else Decimal('0')
         rate = Decimal(rates[i]) if i < len(rates) and rates[i] else Decimal('0')
         if qty <= 0 or rate <= 0: continue
         product = products_list.get(pk=pid)
-        unit = units[i] if i < len(units) else 'sqft'
+        unit = units[i] if i < len(units) else 'sqm'
         pcs  = Decimal(pieces[i]) if i < len(pieces) and pieces[i] else None
         l    = Decimal(lengths[i]) if i < len(lengths) and lengths[i] else None
         w    = Decimal(widths[i]) if i < len(widths) and widths[i] else None
         product.update_avg_cost(qty, rate)
         si_item = StockInItem.objects.create(
             stock_in=grn, product=product,
-            qty_sqft=qty, rate_per_sqft=rate, landed_rate=rate,
+            qty_sqm=qty, rate_per_sqm=rate, landed_rate=rate,
             rack_location=racks[i] if i < len(racks) else '',
             qty_unit=unit, pieces=pcs, sheet_length=l, sheet_width=w,
         )
@@ -891,16 +965,16 @@ def _save_landing_expenses(request, grn):
 def _recalc_landed_rates(grn, si_items):
     total_landing = grn.landing_expenses_total
     if total_landing <= 0 or not si_items: return
-    total_qty = sum(i.qty_sqft for i in si_items)
+    total_qty = sum(i.qty_sqm for i in si_items)
     if total_qty <= 0: return
     for si_item in si_items:
-        share = (si_item.qty_sqft / total_qty) * total_landing
-        si_item.landed_rate = si_item.rate_per_sqft + (share / si_item.qty_sqft)
+        share = (si_item.qty_sqm / total_qty) * total_landing
+        si_item.landed_rate = si_item.rate_per_sqm + (share / si_item.qty_sqm)
         si_item.save(update_fields=['landed_rate'])
         p = si_item.product
         all_items = StockInItem.objects.filter(product=p)
-        rv = sum(i.qty_sqft * (i.landed_rate or i.rate_per_sqft) for i in all_items)
-        rq = sum(i.qty_sqft for i in all_items)
+        rv = sum(i.qty_sqm * (i.landed_rate or i.rate_per_sqm) for i in all_items)
+        rq = sum(i.qty_sqm for i in all_items)
         if rq > 0: p.avg_cost = rv / rq; p.save(update_fields=['avg_cost'])
 
 
@@ -950,7 +1024,7 @@ def add_sale(request):
     from django.db.models.functions import Coalesce
     customers_list = Customer.objects.filter(godown=godown).annotate(
         db_total_billed=Coalesce(Sum(
-            ExpressionWrapper(F('sales__items__qty_sqft') * F('sales__items__rate_per_sqft'),
+            ExpressionWrapper(F('sales__items__qty_sqm') * F('sales__items__rate_per_sqm'),
                               output_field=DecimalField())
         ), 0, output_field=DecimalField()),
         db_total_received=Coalesce(
@@ -963,25 +1037,18 @@ def add_sale(request):
     products_list = Product.objects.filter(godown=godown)
     if request.method == 'POST':
         sizes = request.POST.getlist('size[]') or ['']*20
-        rates = request.POST.getlist('rate_per_sqft[]')
-        qtys  = request.POST.getlist('qty_sqft[]')
-
-        # Conversion: user enters sq.m and ₹/sq.m → convert to sqft and ₹/sqft for DB
-        SQM_TO_SQFT = Decimal('10.7639')  # 1 / 0.0929
-        SQFT_TO_SQM = Decimal('0.0929')
+        rates = request.POST.getlist('rate_per_sqm[]')
+        qtys  = request.POST.getlist('qty_sqm[]')
 
         # ── PASS 1: Validate stock BEFORE opening a transaction ──
+        # User enters sq.m — stored directly, no conversion needed
         stock_errors = []
         line_items   = []
         for i, pid in enumerate(request.POST.getlist('product[]')):
             if not pid: continue
-            qty_sqm  = Decimal(qtys[i])  if i < len(qtys)  and qtys[i]  else Decimal('0')
-            rate_sqm = Decimal(rates[i]) if i < len(rates) and rates[i] else Decimal('0')
-            if qty_sqm <= 0 or rate_sqm <= 0: continue
-
-            # Convert user-entered sq.m values → sqft for DB storage and stock comparison
-            qty  = (qty_sqm  * SQM_TO_SQFT).quantize(Decimal('0.0001'))
-            rate = (rate_sqm * SQFT_TO_SQM).quantize(Decimal('0.0001'))  # ₹/sq.m → ₹/sqft
+            qty  = Decimal(qtys[i])  if i < len(qtys)  and qtys[i]  else Decimal('0')
+            rate = Decimal(rates[i]) if i < len(rates) and rates[i] else Decimal('0')
+            if qty <= 0 or rate <= 0: continue
 
             try:
                 product = products_list.get(pk=pid)
@@ -989,15 +1056,14 @@ def add_sale(request):
                 stock_errors.append(f'Item {i+1}: Product not found.')
                 continue
 
-            stock_sqm = (product.stock_qty * SQFT_TO_SQM).quantize(Decimal('0.0001'))
             if product.stock_qty <= 0:
                 stock_errors.append(
                     f'{product.display_name}: Out of stock (0 sq.m available).'
                 )
-            elif qty > product.stock_qty:  # compare in sqft (both now sqft)
+            elif qty > product.stock_qty:
                 stock_errors.append(
-                    f'{product.display_name}: Only {stock_sqm:.4f} sq.m '
-                    f'available, you entered {qty_sqm:.4f} sq.m.'
+                    f'{product.display_name}: Only {product.stock_qty:.4f} sq.m '
+                    f'available, you entered {qty:.4f} sq.m.'
                 )
             else:
                 line_items.append((i, pid, product, qty, rate))
@@ -1027,10 +1093,9 @@ def add_sale(request):
             for i, pid, product, qty, rate in line_items:
                 locked = locked_products.get(int(pid))
                 if locked and qty > locked.stock_qty:
-                    stock_sqm = (locked.stock_qty * Decimal('0.0929')).quantize(Decimal('0.0001'))
                     race_errors.append(
                         f'{locked.display_name}: Stock changed — '
-                        f'only {stock_sqm:.4f} sq.m available now.'
+                        f'only {locked.stock_qty:.4f} sq.m available now.'
                     )
             if race_errors:
                 for err in race_errors:
@@ -1072,13 +1137,13 @@ def add_sale(request):
                     for si_item, take_qty in fifo_batches:
                         SaleItem.objects.create(sale=sale, product=locked_product,
                             size=sizes[i] if i<len(sizes) else '',
-                            qty_sqft=take_qty, rate_per_sqft=rate,
+                            qty_sqm=take_qty, rate_per_sqm=rate,
                             cost_at_sale=si_item.landed_rate or cost_snap,
                             grn_source=si_item.stock_in)
                 else:
                     SaleItem.objects.create(sale=sale, product=locked_product,
                         size=sizes[i] if i<len(sizes) else '',
-                        qty_sqft=qty, rate_per_sqft=rate,
+                        qty_sqm=qty, rate_per_sqm=rate,
                         cost_at_sale=cost_snap, grn_source=None)
                 locked_product.stock_qty -= qty
                 locked_product.save()
@@ -1226,7 +1291,29 @@ def add_expense(request):
     }))
 
 
-# ── Invoice ───────────────────────────────────────────────────────
+@login_req
+def edit_expense(request, pk):
+    godown = get_godown(request)
+    expense = get_object_or_404(Expense, pk=pk, godown=godown)
+    if request.method == 'POST':
+        expense.category     = request.POST['category']
+        expense.date         = request.POST['date']
+        expense.description  = request.POST.get('description', '')
+        expense.paid_to      = request.POST.get('paid_to', '')
+        expense.amount       = request.POST.get('amount', 0) or 0
+        expense.payment_mode = request.POST.get('payment_mode', 'cash')
+        expense.status       = request.POST.get('status', 'paid')
+        expense.bill_number  = request.POST.get('bill_number', '')
+        expense.save()
+        messages.success(request, 'Expense updated.')
+        return redirect('expenses')
+    return render(request, 'godown/add_expense.html', ctx(request, {
+        'active': 'expenses',
+        'expense': expense,
+        'expense_categories': LookupValue.choices_for(godown, 'expense_category'),
+    }))
+
+
 @login_req
 def invoice_view(request, pk):
     godown = get_godown(request)
@@ -1302,7 +1389,7 @@ def analytics_data(request):
               .annotate(period=trunc_fn('sale__date'))
               .values('period')
               .annotate(total=Coalesce(Sum(
-                  ExpressionWrapper(F('qty_sqft') * F('rate_per_sqft'), output_field=DecimalField())
+                  ExpressionWrapper(F('qty_sqm') * F('rate_per_sqm'), output_field=DecimalField())
               ), 0, output_field=DecimalField()))
               .order_by('period'))
     _dp = lambda x: x.date() if hasattr(x,'date') and callable(x.date) else x
@@ -1314,7 +1401,7 @@ def analytics_data(request):
                .annotate(period=trunc_fn('stock_in__date'))
                .values('period')
                .annotate(total=Coalesce(Sum(
-                   ExpressionWrapper(F('qty_sqft') * F('rate_per_sqft'), output_field=DecimalField())
+                   ExpressionWrapper(F('qty_sqm') * F('rate_per_sqm'), output_field=DecimalField())
                ), 0, output_field=DecimalField()))
                .order_by('period'))
     cost_map = {_dp(r['period']): float(r['total']) for r in cost_qs}
@@ -1357,7 +1444,7 @@ def analytics_data(request):
                   .filter(sale__godown=godown, sale__date__gte=date_from, sale__date__lte=date_to)
                   .values('product__species')
                   .annotate(total=Coalesce(Sum(
-                      ExpressionWrapper(F('qty_sqft') * F('rate_per_sqft'), output_field=DecimalField())
+                      ExpressionWrapper(F('qty_sqm') * F('rate_per_sqm'), output_field=DecimalField())
                   ), 0, output_field=DecimalField()))
                   .order_by('-total')[:6])
     sp_total = sum(float(r['total']) for r in species_qs) or 1
@@ -1390,7 +1477,7 @@ def profit_loss_data(request):
               .annotate(month=TruncMonth('sale__date'))
               .values('month')
               .annotate(total=Coalesce(Sum(
-                  ExpressionWrapper(F('qty_sqft') * F('rate_per_sqft'), output_field=DecimalField())
+                  ExpressionWrapper(F('qty_sqm') * F('rate_per_sqm'), output_field=DecimalField())
               ), 0, output_field=DecimalField()))
               .order_by('month'))
     _d = lambda x: x.date() if hasattr(x,'date') and callable(x.date) else x
@@ -1402,7 +1489,7 @@ def profit_loss_data(request):
                .annotate(month=TruncMonth('stock_in__date'))
                .values('month')
                .annotate(total=Coalesce(Sum(
-                   ExpressionWrapper(F('qty_sqft') * F('rate_per_sqft'), output_field=DecimalField())
+                   ExpressionWrapper(F('qty_sqm') * F('rate_per_sqm'), output_field=DecimalField())
                ), 0, output_field=DecimalField()))
                .order_by('month'))
     cogs_map = {_d(r['month']): float(r['total']) for r in cogs_qs}
@@ -1457,15 +1544,15 @@ def grn_profit(request):
     for grn in grns:
         items_data=[]; grn_cost=Decimal('0'); grn_rev=Decimal('0'); grn_sold=Decimal('0'); grn_qty=Decimal('0')
         for si in grn.items.all():
-            landed = si.landed_rate or si.rate_per_sqft
+            landed = si.landed_rate or si.rate_per_sqm
             sales_q = grn.sale_items.filter(product=si.product)
-            qty_sold = sum(s.qty_sqft for s in sales_q)
+            qty_sold = sum(s.qty_sqm for s in sales_q)
             revenue  = sum(s.amount for s in sales_q)
             cogs     = qty_sold * landed
             profit   = revenue - cogs
             margin   = (profit/revenue*100) if revenue else Decimal('0')
-            items_data.append({'product':si.product,'grn_qty':si.qty_sqft,'grn_rate':si.rate_per_sqft,'landed_rate':landed,'total_landed_cost':si.qty_sqft*landed,'qty_sold':qty_sold,'qty_remaining':si.qty_sqft-qty_sold,'revenue':revenue,'cogs':cogs,'profit':profit,'margin':round(margin,1),'status':'sold_out' if (si.qty_sqft - Decimal(str(qty_sold))) <= Decimal('0.01') else ('partial' if qty_sold>0 else 'unsold'),'sales_detail':[{'bill_number':s.sale.bill_number,'customer':s.sale.customer.name,'date':s.sale.date,'qty':s.qty_sqft,'rate':s.rate_per_sqft,'revenue':s.amount,'cogs':s.qty_sqft*landed,'profit':s.amount-(s.qty_sqft*landed)} for s in sales_q]})
-            grn_cost += si.qty_sqft*landed; grn_rev += revenue; grn_sold += qty_sold; grn_qty += si.qty_sqft
+            items_data.append({'product':si.product,'grn_qty':si.qty_sqm,'grn_rate':si.rate_per_sqm,'landed_rate':landed,'total_landed_cost':si.qty_sqm*landed,'qty_sold':qty_sold,'qty_remaining':si.qty_sqm-qty_sold,'revenue':revenue,'cogs':cogs,'profit':profit,'margin':round(margin,1),'status':'sold_out' if (si.qty_sqm - Decimal(str(qty_sold))) <= Decimal('0.01') else ('partial' if qty_sold>0 else 'unsold'),'sales_detail':[{'bill_number':s.sale.bill_number,'customer':s.sale.customer.name,'date':s.sale.date,'qty':s.qty_sqm,'rate':s.rate_per_sqm,'revenue':s.amount,'cogs':s.qty_sqm*landed,'profit':s.amount-(s.qty_sqm*landed)} for s in sales_q]})
+            grn_cost += si.qty_sqm*landed; grn_rev += revenue; grn_sold += qty_sold; grn_qty += si.qty_sqm
         grn_p = grn_rev - sum(d['cogs'] for d in items_data)
         grn_m = (grn_p/grn_rev*100) if grn_rev else Decimal('0')
         is_fully_sold = grn_qty > 0 and (grn_qty - grn_sold) <= Decimal('0.01')
@@ -1510,7 +1597,7 @@ def stock_board(request):
         for row in SaleItem.objects.filter(
             sale__godown=godown, sale__date__gte=cutoff
         ).values('product_id').annotate(
-            sold=Coalesce(Sum('qty_sqft'), 0, output_field=DecimalField())
+            sold=Coalesce(Sum('qty_sqm'), 0, output_field=DecimalField())
         )
     }
     for p in products:
@@ -1547,7 +1634,7 @@ def reorder_alerts(request):
         for row in SaleItem.objects.filter(
             sale__godown=godown, sale__date__gte=cutoff
         ).values('product_id').annotate(
-            sold=Coalesce(Sum('qty_sqft'), 0, output_field=DecimalField())
+            sold=Coalesce(Sum('qty_sqm'), 0, output_field=DecimalField())
         )
     }
 
@@ -1627,7 +1714,7 @@ def po_items_api(request, pk):
     )
     items = []
     for item in po.po_items.all():
-        qty_ordered   = float(item.qty_sqft)
+        qty_ordered   = float(item.qty_sqm)
         qty_received  = float(item.qty_received)
         qty_pending   = float(item.qty_pending)
 
@@ -1639,25 +1726,25 @@ def po_items_api(request, pk):
         # from pending sqft so the GRN form shows the right piece count
         sl = float(item.sheet_length) if item.sheet_length else float(item.product.sheet_length)
         sw = float(item.sheet_width)  if item.sheet_width  else float(item.product.sheet_width)
-        sheet_sqft = sl * sw
+        effective_sheet_sqm = sl * sw
 
         pending_pieces = None
-        if item.qty_unit == 'pcs' and item.pieces and sheet_sqft > 0:
+        if item.qty_unit == 'pcs' and item.pieces and effective_sheet_sqm > 0:
             import math
-            pending_pieces = math.ceil(qty_pending / sheet_sqft)
+            pending_pieces = math.ceil(qty_pending / effective_sheet_sqm)
 
         items.append({
             'product_id':      item.product.pk,
             'product_name':    str(item.product),
             'product_display': item.product.display_name,
             # Always send pending qty — not the full ordered qty
-            'qty_sqft':        round(qty_pending, 4),
-            'rate_per_sqft':   float(item.rate_per_sqft),
+            'qty_sqm':        round(qty_pending, 4),
+            'rate_per_sqm':   float(item.rate_per_sqm),
             'qty_unit':        item.qty_unit,
             'pieces':          pending_pieces,
             'sheet_length':    sl,
             'sheet_width':     sw,
-            'sheet_sqft':      sheet_sqft,
+            'effective_sheet_sqm':      effective_sheet_sqm,
             # Include for display/info
             'qty_ordered':     qty_ordered,
             'qty_received':    round(qty_received, 2),
@@ -1781,7 +1868,7 @@ def add_estimation(request):
     from django.db.models.functions import Coalesce
     customers_list = Customer.objects.filter(godown=godown).annotate(
         db_total_billed=Coalesce(Sum(
-            ExpressionWrapper(F('sales__items__qty_sqft') * F('sales__items__rate_per_sqft'),
+            ExpressionWrapper(F('sales__items__qty_sqm') * F('sales__items__rate_per_sqm'),
                               output_field=DecimalField())
         ), 0, output_field=DecimalField()),
         db_total_received=Coalesce(
@@ -1808,25 +1895,21 @@ def add_estimation(request):
                 include_gst=request.POST.get('include_gst') == 'on',
                 status='draft',
             )
-            qtys  = request.POST.getlist('qty_sqft[]')
-            rates = request.POST.getlist('rate_per_sqft[]')
+            qtys  = request.POST.getlist('qty_sqm[]')
+            rates = request.POST.getlist('rate_per_sqm[]')
             descs = request.POST.getlist('description[]')
             pieces= request.POST.getlist('pieces[]')
             lens  = request.POST.getlist('sheet_length[]')
             wids  = request.POST.getlist('sheet_width[]')
-            SQM_TO_SQFT = Decimal('10.7639')
-            SQFT_TO_SQM = Decimal('0.0929')
             for i, pid in enumerate(request.POST.getlist('product[]')):
-                qty_sqm  = Decimal(qtys[i])  if i<len(qtys)  and qtys[i]  else Decimal('0')
-                rate_sqm = Decimal(rates[i]) if i<len(rates) and rates[i] else Decimal('0')
-                if qty_sqm <= 0 or rate_sqm <= 0: continue
-                qty  = (qty_sqm  * SQM_TO_SQFT).quantize(Decimal('0.0001'))
-                rate = (rate_sqm * SQFT_TO_SQM).quantize(Decimal('0.0001'))
+                qty  = Decimal(qtys[i])  if i<len(qtys)  and qtys[i]  else Decimal('0')
+                rate = Decimal(rates[i]) if i<len(rates) and rates[i] else Decimal('0')
+                if qty <= 0 or rate <= 0: continue
                 EstimationItem.objects.create(
                     estimation=est,
                     product_id=pid if pid else None,
                     description=descs[i] if i<len(descs) else '',
-                    qty_sqft=qty, rate_per_sqft=rate,
+                    qty_sqm=qty, rate_per_sqm=rate,
                     pieces=Decimal(pieces[i]) if i<len(pieces) and pieces[i] else None,
                     sheet_length=Decimal(lens[i]) if i<len(lens) and lens[i] else None,
                     sheet_width=Decimal(wids[i]) if i<len(wids) and wids[i] else None,
@@ -1873,7 +1956,7 @@ def convert_to_sale(request, pk):
             est.save(update_fields=['customer'])
 
         # Validate at least one item has a product
-        items = [i for i in est.est_items.all() if i.product and i.qty_sqft > 0 and i.rate_per_sqft > 0]
+        items = [i for i in est.est_items.all() if i.product and i.qty_sqm > 0 and i.rate_per_sqm > 0]
         if not items:
             messages.error(request, 'Estimation has no valid items to convert. Add products with qty and rate.')
             return redirect('estimation_detail', pk=pk)
@@ -1891,7 +1974,7 @@ def convert_to_sale(request, pk):
             for item in items:
                 SaleItem.objects.create(
                     sale=sale, product=item.product,
-                    qty_sqft=item.qty_sqft, rate_per_sqft=item.rate_per_sqft,
+                    qty_sqm=item.qty_sqm, rate_per_sqm=item.rate_per_sqm,
                     cost_at_sale=item.product.avg_cost,
                 )
             est.status = 'accepted'; est.save()
@@ -2189,7 +2272,7 @@ def supplier_history(request, pk):
     species_map = defaultdict(lambda: {'qty': Decimal('0'), 'amount': Decimal('0')})
     for grn in grns:
         for item in grn.items.all():
-            species_map[item.product.species]['qty']    += item.qty_sqft
+            species_map[item.product.species]['qty']    += item.qty_sqm
             species_map[item.product.species]['amount'] += item.amount
 
     return render(request, 'godown/supplier_history.html', ctx(request, {
@@ -2222,7 +2305,7 @@ def damage_list(request):
     from django.db.models import DecimalField as DF, ExpressionWrapper as EW, F
 
     # Summary stats
-    total_qty        = damages.aggregate(t=Coalesce(Sum('qty_sqft'), 0, output_field=DF()))['t']
+    total_qty        = damages.aggregate(t=Coalesce(Sum('qty_sqm'), 0, output_field=DF()))['t']
     # Write-off value = sum(qty * cost_rate)
     total_write_off  = sum(d.write_off_value for d in damages)
 
@@ -2230,7 +2313,7 @@ def damage_list(request):
     from collections import defaultdict
     by_category = defaultdict(lambda: {'qty': Decimal('0'), 'value': Decimal('0'), 'count': 0})
     for d in damages:
-        by_category[d.get_category_display()]['qty']   += d.qty_sqft
+        by_category[d.get_category_display()]['qty']   += d.qty_sqm
         by_category[d.get_category_display()]['value'] += d.write_off_value
         by_category[d.get_category_display()]['count'] += 1
 
@@ -2270,16 +2353,14 @@ def add_damage(request, grn_pk=None):
             grn_obj = get_object_or_404(StockIn, pk=grn_id, godown=godown) if grn_id else None
 
             # Check available stock in sqft (DB unit); qty entered by user is sq.m
-            SQM_TO_SQFT = Decimal('10.7639')
-            SQFT_TO_SQM = Decimal('0.0929')
             total_received = sum(
-                i.qty_sqft for i in StockInItem.objects.filter(product=product, stock_in__godown=godown)
+                i.qty_sqm for i in StockInItem.objects.filter(product=product, stock_in__godown=godown)
             )
             total_sold = sum(
-                i.qty_sqft for i in SaleItem.objects.filter(product=product, sale__godown=godown)
+                i.qty_sqm for i in SaleItem.objects.filter(product=product, sale__godown=godown)
             )
             total_damaged_existing = sum(
-                d.qty_sqft for d in StockDamage.objects.filter(product=product, godown=godown)
+                d.qty_sqm for d in StockDamage.objects.filter(product=product, godown=godown)
             )
             available_sqft = total_received - total_sold - total_damaged_existing
             available_sqm  = available_sqft * SQFT_TO_SQM
@@ -2309,7 +2390,7 @@ def add_damage(request, grn_pk=None):
             damage = StockDamage.objects.create(
                 godown=godown, product=product, grn=grn_obj,
                 date=date, category=category,
-                qty_sqft=qty_dec, cost_rate=cost_rate,
+                qty_sqm=qty_dec, cost_rate=cost_rate,
                 description=description, reported_by=request.user,
             )
 
@@ -2341,7 +2422,7 @@ def delete_damage(request, pk):
     if request.method == 'POST':
         # Restore stock qty
         product = damage.product
-        product.stock_qty += damage.qty_sqft
+        product.stock_qty += damage.qty_sqm
         product.save(update_fields=['stock_qty'])
         damage.delete()
         messages.success(request, 'Damage record deleted and stock restored.')
@@ -2369,7 +2450,7 @@ def einvoice_json(request, pk):
     items = list(sale.items.all())
     item_list = []
     for i, item in enumerate(items, 1):
-        taxable = float(item.qty_sqft * item.rate_per_sqft)
+        taxable = float(item.qty_sqm * item.rate_per_sqm)
         cgst_rate = float(sale.gst_rate) / 2 if not sale.is_igst else 0
         igst_rate = float(sale.gst_rate) if sale.is_igst else 0
         gst_amt   = taxable * float(sale.gst_rate) / 100
@@ -2379,10 +2460,10 @@ def einvoice_json(request, pk):
             "IsServc":    "N",
             "HsnCd":      item.product.hsn_code or "4408",
             "Barcde":     "",
-            "Qty":        float(item.qty_sqft),
+            "Qty":        float(item.qty_sqm),
             "FreeQty":    0,
             "Unit":       item.product.uom or "SQF",
-            "UnitPrice":  float(item.rate_per_sqft),
+            "UnitPrice":  float(item.rate_per_sqm),
             "TotAmt":     taxable,
             "Discount":   0,
             "PreTaxVal":  taxable,
@@ -2537,7 +2618,7 @@ def export_einvoice_csv(request):
 
     for sale in sales:
         for item in sale.items.all():
-            taxable = float(item.qty_sqft * item.rate_per_sqft)
+            taxable = float(item.qty_sqm * item.rate_per_sqm)
             gst_amt = taxable * float(sale.gst_rate) / 100
             writer.writerow([
                 '1.1',
@@ -2557,9 +2638,9 @@ def export_einvoice_csv(request):
                 sale.customer.state_code or '32',
                 item.product.display_name,
                 item.product.hsn_code or '4408',
-                float(item.qty_sqft),
+                float(item.qty_sqm),
                 item.product.uom or 'SQF',
-                float(item.rate_per_sqft),
+                float(item.rate_per_sqm),
                 round(taxable, 2),
                 float(sale.gst_rate),
                 round(gst_amt, 2) if sale.is_igst else 0,

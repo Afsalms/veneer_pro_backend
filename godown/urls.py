@@ -38,7 +38,8 @@ urlpatterns = [
     # Purchase Orders
     path('purchase-orders/',               views.po_list,   name='po_list'),
     path('purchase-orders/add/',           views.add_po,    name='add_po'),
-    path('purchase-orders/<int:pk>/',      views.po_detail, name='po_detail'),
+    path('purchase-orders/<int:pk>/',         views.po_detail,  name='po_detail'),
+    path('purchase-orders/<int:pk>/edit/',    views.edit_po,    name='edit_po'),
     path('purchase-orders/<int:pk>/advance/', views.po_advance, name='po_advance'),
 
     # Stock In
@@ -63,8 +64,9 @@ urlpatterns = [
     path('payables/pay/<int:pk>/',  views.record_payment, name='record_payment'),
 
     # Expenses
-    path('expenses/',      views.expenses,     name='expenses'),
-    path('expenses/add/',  views.add_expense,  name='add_expense'),
+    path('expenses/',           views.expenses,      name='expenses'),
+    path('expenses/add/',       views.add_expense,   name='add_expense'),
+    path('expenses/<int:pk>/edit/', views.edit_expense, name='edit_expense'),
 
     # Analytics
     path('analytics/',          views.analytics,        name='analytics'),

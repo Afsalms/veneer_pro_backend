@@ -28,49 +28,177 @@
       <span style="font-weight:400;color:var(--tm);"> — used to auto-convert pieces → sq.m in PO and GRN forms</span>
     </div>
     <div class="frow">
-      <div class="fthird"><label class="fl">Sheet Length (ft)</label><input class="fc" name="sheet_length" type="number" step="0.01" value="{{ product.sheet_length|default:'8' }}" placeholder="8" oninput="calcSheet()"></div>
-      <div class="fthird"><label class="fl">Sheet Width (ft)</label><input class="fc" name="sheet_width" type="number" step="0.01" value="{{ product.sheet_width|default:'4' }}" placeholder="4" oninput="calcSheet()"></div>
-      <div class="fthird"><label class="fl">sq.m per Sheet</label><input class="fc" id="sheet-sqft-display" readonly placeholder="2.9728" style="background:#f0ebe3;font-weight:600;"></div>
+      <div class="fthird">
+        <label class="fl">Sheet Length (ft)</label>
+        <input class="fc" name="sheet_length" type="number" step="0.01"
+               value="{{ product.sheet_length|default:'8' }}" placeholder="8" oninput="calcSheet()">
+      </div>
+      <div class="fthird">
+        <label class="fl">Sheet Width (ft)</label>
+        <input class="fc" name="sheet_width" type="number" step="0.01"
+               value="{{ product.sheet_width|default:'4' }}" placeholder="4" oninput="calcSheet()">
+      </div>
+      <div class="fthird">
+        <label class="fl">Auto sq.m per Sheet</label>
+        <input class="fc" id="sheet-sqm-auto" readonly placeholder="2.9728"
+               style="background:#f0ebe3;font-weight:600;"
+               title="Auto-calculated from length × width × 0.0929">
+      </div>
     </div>
-    <div style="font-size:11px;color:var(--tm);">Common sizes: 8×4 ft = 2.9728 sq.m &nbsp;|&nbsp; 8×3 ft = 2.2296 sq.m &nbsp;|&nbsp; 7×3 ft = 1.9509 sq.m</div>
+    <!-- Override field — shown next to auto value -->
+    <div class="frow" style="margin-top:-8px;">
+      <div class="ffull">
+        <label class="fl">
+          Override sq.m per Sheet
+          <span style="font-weight:400;color:var(--tm);font-size:11px;">
+            — Enter supplier's actual sq.m if different from auto-calculated.
+            Leave blank to use auto value. This override is used in all PO and GRN calculations.
+          </span>
+        </label>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input class="fc" name="sheet_sqm_override" id="sheet-sqm-override"
+                 type="number" step="0.0001" min="0.0001"
+                 value="{{ product.sheet_sqm_override|default:'' }}"
+                 placeholder="Leave blank to use auto-calculated value"
+                 style="max-width:260px;"
+                 oninput="onOverrideInput()">
+          <div id="override-note" style="font-size:12px;color:var(--tm);"></div>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--tm);">
+      Common sizes: 8×4 ft = 2.9728 sq.m &nbsp;|&nbsp; 8×3 ft = 2.2296 sq.m &nbsp;|&nbsp; 7×3 ft = 1.9509 sq.m &nbsp;|&nbsp; 6×3 ft = 1.6722 sq.m
+    </div>
   </div>
 </div>
-<div class="fp-actions"><a class="bs" href="{% url 'products' %}">Cancel</a><button class="bw" type="submit"><i class="bi bi-check2"></i> Save Product</button></div>
+<div class="fp-actions"><a class="bs" href="{% url 'products' %}">Cancel</a><button class="bw" type="button" onclick="submitProduct()"><i class="bi bi-check2"></i> Save Product</button></div>
 </form>
 {% endblock %}
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jquery-validation@1.19.5/dist/jquery.validate.min.js"></script>
-<script>
-$(function(){
-  $('#product-form').validate({
-    rules: {
-      species: { required: true, minlength: 2 },
-      buy_rate: { required: true, number: true, min: 0 },
-      sale_rate: { required: true, number: true, min: 0 },
-      min_stock: { required: true, number: true, min: 0 },
-      sheet_length: { required: true, number: true, min: 0.01 },
-      sheet_width: { required: true, number: true, min: 0.01 },
-    },
-    messages: {
-      species: { required: 'Species name is required' },
-      buy_rate: { required: 'Buy rate is required', number: 'Enter a valid number' },
-      sale_rate: { required: 'Sale rate is required', number: 'Enter a valid number' },
-    },
-    errorClass: 'field-error', errorElement: 'div',
-    errorPlacement: function(e,el){ e.css({'color':'#b33a36','font-size':'11px','margin-top':'3px'}); e.insertAfter(el); },
-    highlight: function(el){ $(el).css('border-color','#b33a36'); },
-    unhighlight: function(el){ $(el).css('border-color',''); }
-  });
-});
-</script>
 <script>
 function calcSheet(){
   const l = parseFloat(document.querySelector('[name=sheet_length]').value) || 0;
   const w = parseFloat(document.querySelector('[name=sheet_width]').value) || 0;
   const SQFT_TO_SQM = 0.0929;
-  document.getElementById('sheet-sqft-display').value = ((l * w) * SQFT_TO_SQM).toFixed(4);
+  const autoSqm = (l * w * SQFT_TO_SQM).toFixed(4);
+  document.getElementById('sheet-sqm-auto').value = l && w ? autoSqm : '';
+  onOverrideInput();
 }
-document.addEventListener('DOMContentLoaded', calcSheet);
+
+function onOverrideInput() {
+  const autoEl  = document.getElementById('sheet-sqm-auto');
+  const overEl  = document.getElementById('sheet-sqm-override');
+  const noteEl  = document.getElementById('override-note');
+  const autoVal = parseFloat(autoEl.value) || 0;
+  const overVal = parseFloat(overEl.value) || 0;
+
+  if (overVal > 0) {
+    noteEl.innerHTML = `<span style="color:var(--wood-600);">✓ Override active — <strong>${overVal.toFixed(4)} sq.m</strong> will be used in PO/GRN calculations instead of ${autoVal.toFixed(4)}</span>`;
+  } else {
+    noteEl.innerHTML = autoVal ? `<span style="color:var(--tm);">Auto value <strong>${autoVal.toFixed(4)} sq.m</strong> will be used</span>` : '';
+  }
+}
+
+function setFieldError(name, msg) {
+  const el = document.querySelector(`[name="${name}"]`);
+  if (!el) return;
+  el.style.borderColor = '#b33a36';
+  // Remove existing error if any
+  const existing = el.parentElement.querySelector('.prod-err');
+  if (existing) existing.remove();
+  const err = document.createElement('div');
+  err.className = 'prod-err';
+  err.style.cssText = 'color:#b33a36;font-size:11px;margin-top:3px;';
+  err.textContent = msg;
+  el.parentElement.appendChild(err);
+}
+
+function clearFieldError(name) {
+  const el = document.querySelector(`[name="${name}"]`);
+  if (!el) return;
+  el.style.borderColor = '';
+  const existing = el.parentElement.querySelector('.prod-err');
+  if (existing) existing.remove();
+}
+
+function submitProduct() {
+  // Clear previous errors
+  document.querySelectorAll('.prod-err').forEach(e => e.remove());
+  document.querySelectorAll('.fc').forEach(e => e.style.borderColor = '');
+  const banner = document.getElementById('prod-error-banner');
+  if (banner) banner.remove();
+
+  const errors = [];
+  const species = document.querySelector('[name="species"]').value.trim();
+  if (!species || species.length < 2) {
+    errors.push('Species name is required (at least 2 characters)');
+    setFieldError('species', 'Species name is required');
+  }
+
+  const buyRate = parseFloat(document.querySelector('[name="buy_rate"]').value);
+  if (isNaN(buyRate) || buyRate <= 0) {
+    errors.push('Buy rate must be greater than 0');
+    setFieldError('buy_rate', 'Enter a valid buy rate');
+  }
+
+  const saleRate = parseFloat(document.querySelector('[name="sale_rate"]').value);
+  if (isNaN(saleRate) || saleRate <= 0) {
+    errors.push('Sale rate must be greater than 0');
+    setFieldError('sale_rate', 'Enter a valid sale rate');
+  }
+
+  const minStock = parseFloat(document.querySelector('[name="min_stock"]').value);
+  if (isNaN(minStock) || minStock < 0) {
+    errors.push('Min stock must be 0 or more');
+    setFieldError('min_stock', 'Enter a valid minimum stock');
+  }
+
+  const sheetLen = parseFloat(document.querySelector('[name="sheet_length"]').value);
+  if (isNaN(sheetLen) || sheetLen <= 0) {
+    errors.push('Sheet length must be greater than 0');
+    setFieldError('sheet_length', 'Enter sheet length in feet');
+  }
+
+  const sheetWid = parseFloat(document.querySelector('[name="sheet_width"]').value);
+  if (isNaN(sheetWid) || sheetWid <= 0) {
+    errors.push('Sheet width must be greater than 0');
+    setFieldError('sheet_width', 'Enter sheet width in feet');
+  }
+
+  const override = parseFloat(document.querySelector('[name="sheet_sqm_override"]').value);
+  if (!isNaN(override) && override <= 0) {
+    errors.push('Override sq.m must be greater than 0 (or leave blank)');
+    setFieldError('sheet_sqm_override', 'Must be greater than 0 or leave blank');
+  }
+
+  if (errors.length > 0) {
+    // Show summary banner at top of form
+    const form = document.getElementById('product-form');
+    const b = document.createElement('div');
+    b.id = 'prod-error-banner';
+    b.style.cssText = 'background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#b33a36;';
+    b.innerHTML = '<strong><i class="bi bi-exclamation-triangle"></i> Please fix the following:</strong><ul style="margin:6px 0 0 18px;padding:0;">'
+      + errors.map(e => `<li>${e}</li>`).join('')
+      + '</ul>';
+    form.insertBefore(b, form.firstChild);
+    // Scroll to banner
+    b.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+
+  document.getElementById('product-form').submit();
+}
+
+// Clear field error on input
+document.addEventListener('DOMContentLoaded', function() {
+  calcSheet();
+  document.querySelectorAll('.fc').forEach(el => {
+    el.addEventListener('input', function() {
+      this.style.borderColor = '';
+      const err = this.parentElement.querySelector('.prod-err');
+      if (err) err.remove();
+    });
+  });
+});
 </script>
 {% endblock %}

@@ -2,7 +2,7 @@
 {% block title %}{{ po.po_number }}{% endblock %}
 {% block page_title %}{{ po.po_number }}{% endblock %}
 {% block content %}
-<div class="fp-header"><a class="fp-back" href="{% url 'po_list' %}"><i class="bi bi-arrow-left"></i></a><span class="fp-title">{{ po.po_number }} — {{ po.supplier.name }}</span></div>
+<div class="fp-header"><a class="fp-back" href="{% url 'po_list' %}"><i class="bi bi-arrow-left"></i></a><span class="fp-title">{{ po.po_number }} — {{ po.supplier.name }}</span>{% if po.status in 'pending,partial' %}<a class="bs" href="{% url 'edit_po' po.pk %}" style="margin-left:auto;"><i class="bi bi-pencil"></i> Edit PO</a>{% endif %}</div>
 
 <!-- Status bar -->
 <div class="cv" style="margin-bottom:14px;">

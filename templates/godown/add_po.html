@@ -95,19 +95,19 @@ function lineItemHTML(n) {
         <div class="fhalf">
           <label class="fl">Purchase Unit</label>
           <select class="fc fsel unit-sel" onchange="onUnitChange(this)">
-            <option value="sqft">Square Metres (sq.m)</option>
+            <option value="sqm">Square Metres (sq.m)</option>
             <option value="pcs">Pieces (nos)</option>
           </select>
-          <input type="hidden" name="qty_unit[]" value="sqft">
+          <input type="hidden" name="qty_unit[]" value="sqm">
         </div>
       </div>
 
       <!-- Sqft mode -->
-      <div class="sqft-section frow">
+      <div class="sqm-section frow">
         <div class="ffull">
           <label class="fl">Quantity (sq.m) *</label>
-          <input class="fc sq.m-input" type="number" step="0.01" min="0.01" placeholder="0.00" oninput="onSqftInput(this)">
-          <input type="hidden" name="qty_sqft[]" value="">
+          <input class="fc sq.m-input" type="number" step="0.01" min="0.01" placeholder="0.00" oninput="onSqmInput(this)">
+          <input type="hidden" name="qty_sqm[]" value="">
         </div>
       </div>
 
@@ -115,23 +115,23 @@ function lineItemHTML(n) {
       <div class="pcs-section frow" style="display:none;">
         <div class="fthird">
           <label class="fl">Pieces *</label>
-          <input class="fc" name="pieces[]" type="number" step="1" min="1" placeholder="0" oninput="calcSqft(getLI(this))">
+          <input class="fc" name="pieces[]" type="number" step="1" min="1" placeholder="0" oninput="calcSqm(getLI(this))">
         </div>
         <div class="fthird">
           <label class="fl">Length (ft)</label>
-          <input class="fc" name="sheet_length[]" type="number" step="0.01" min="0.01" placeholder="8" oninput="calcSqft(getLI(this))">
+          <input class="fc" name="sheet_length[]" type="number" step="0.01" min="0.01" placeholder="8" oninput="calcSqm(getLI(this))" readonly style="background:#f0ebe3;">
         </div>
         <div class="fthird">
           <label class="fl">Width (ft)</label>
-          <input class="fc" name="sheet_width[]" type="number" step="0.01" min="0.01" placeholder="4" oninput="calcSqft(getLI(this))">
+          <input class="fc" name="sheet_width[]" type="number" step="0.01" min="0.01" placeholder="4" oninput="calcSqm(getLI(this))" readonly style="background:#f0ebe3;">
         </div>
       </div>
       <!-- Pieces: show calculated sq.m -->
       <div class="pcs-section frow" style="display:none;">
         <div class="ffull">
-          <label class="fl">= Calculated Sqft</label>
+          <label class="fl">= Calculated sq.m</label>
           <div class="fc qty-calc" style="background:#f0ebe3;display:flex;align-items:center;min-height:42px;font-size:13px;padding:10px 12px;color:var(--tm);">Fill pieces and dimensions above</div>
-          <input type="hidden" name="qty_sqft[]" value="">
+          <input type="hidden" name="qty_sqm[]" value="">
         </div>
       </div>
 
@@ -139,7 +139,7 @@ function lineItemHTML(n) {
       <div class="frow">
         <div class="fhalf">
           <label class="fl">Rate (₹ per sq.m) *</label>
-          <input class="fc li-rate" name="rate_per_sqft[]" type="number" step="0.01" min="0.01" placeholder="0.00" oninput="calcLineAmount(getLI(this))" required>
+          <input class="fc li-rate" name="rate_per_sqm[]" type="number" step="0.01" min="0.01" placeholder="0.00" oninput="calcLineAmount(getLI(this))" required>
         </div>
         <div class="fhalf">
           <label class="fl">Line Amount (₹)</label>
@@ -206,11 +206,17 @@ $(function(){
     unhighlight: function(element) { $(element).css('border-color',''); },
     submitHandler: function(form) {
       // Ensure at least one valid item
+      // Note: each line item has TWO qty_sqm[] hidden inputs (one for sqm-mode, one for pcs-mode)
+      // Only one will be non-zero depending on the selected unit — sum them both
       let valid = false;
       document.querySelectorAll('#po-items .line-item').forEach(li => {
         const pid  = li.querySelector('[name="product[]"]')?.value;
-        const qty  = parseFloat(li.querySelector('[name="qty_sqft[]"]')?.value) || 0;
-        const rate = parseFloat(li.querySelector('[name="rate_per_sqft[]"]')?.value) || 0;
+        const rate = parseFloat(li.querySelector('[name="rate_per_sqm[]"]')?.value) || 0;
+        // Sum ALL qty_sqm[] hidden inputs in this line item — active mode will have the value
+        let qty = 0;
+        li.querySelectorAll('[name="qty_sqm[]"]').forEach(inp => {
+          qty += parseFloat(inp.value) || 0;
+        });
         if (pid && qty > 0 && rate > 0) valid = true;
       });
       if (!valid) { vp.alert('Please add at least one item with product, quantity and rate.','Missing Items','warning'); return false; }
