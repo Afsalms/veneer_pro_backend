@@ -135,12 +135,6 @@ function submitProduct() {
     setFieldError('species', 'Species name is required');
   }
 
-  const buyRate = parseFloat(document.querySelector('[name="buy_rate"]').value);
-  if (isNaN(buyRate) || buyRate <= 0) {
-    errors.push('Buy rate must be greater than 0');
-    setFieldError('buy_rate', 'Enter a valid buy rate');
-  }
-
   const saleRate = parseFloat(document.querySelector('[name="sale_rate"]').value);
   if (isNaN(saleRate) || saleRate <= 0) {
     errors.push('Sale rate must be greater than 0');
