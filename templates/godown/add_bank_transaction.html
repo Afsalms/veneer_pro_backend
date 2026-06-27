@@ -1,0 +1,83 @@
+{% extends "godown/base.html" %}
+{% block title %}Add Transaction — {{ account.account_name }}{% endblock %}
+{% block page_title %}Add Transaction{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'bank_statement' account.pk %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">Add Entry — {{ account.account_name }}</span>
+</div>
+<form method="post">{% csrf_token %}
+<div class="cv">
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Type *</label>
+      <div style="display:flex;gap:10px;">
+        <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border:2px solid var(--border);border-radius:8px;cursor:pointer;" id="lbl-credit">
+          <input type="radio" name="txn_type" value="credit" required onchange="onTypeChange()" style="accent-color:green;width:16px;height:16px;">
+          <div><div style="font-weight:600;color:#2d6a27;">↑ Credit</div><div style="font-size:11px;color:var(--tm);">Money received</div></div>
+        </label>
+        <label style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 14px;border:2px solid var(--border);border-radius:8px;cursor:pointer;" id="lbl-debit">
+          <input type="radio" name="txn_type" value="debit" onchange="onTypeChange()" style="accent-color:#b33a36;width:16px;height:16px;">
+          <div><div style="font-weight:600;color:#b33a36;">↓ Debit</div><div style="font-size:11px;color:var(--tm);">Money paid out</div></div>
+        </label>
+      </div>
+    </div>
+    <div class="fhalf">
+      <label class="fl">Date *</label>
+      <input class="fc" name="date" type="date" required value="{% now 'Y-m-d' %}">
+    </div>
+  </div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Amount (₹) *</label>
+      <input class="fc" name="amount" type="number" step="0.01" min="0.01" required placeholder="0.00">
+    </div>
+    <div class="fhalf">
+      <label class="fl">Category</label>
+      <select class="fc fsel" name="category" id="cat-select">
+        <option value="sale_receipt">Sale Receipt</option>
+        <option value="supplier_payment">Supplier Payment</option>
+        <option value="expense">Expense</option>
+        <option value="advance_paid">Advance Paid</option>
+        <option value="advance_received">Advance Received</option>
+        <option value="transfer_in">Transfer In</option>
+        <option value="transfer_out">Transfer Out</option>
+        <option value="other" selected>Other</option>
+      </select>
+    </div>
+  </div>
+  <div class="frow">
+    <div class="ffull">
+      <label class="fl">Description *</label>
+      <input class="fc" name="description" required placeholder="e.g. Payment received from John Traders for SL-1045">
+    </div>
+  </div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Reference No <span style="font-weight:400;color:var(--tm);">(UTR / Cheque / Transaction ID)</span></label>
+      <input class="fc" name="reference" placeholder="Optional" style="font-family:monospace;">
+    </div>
+  </div>
+</div>
+<div class="fp-actions">
+  <a class="bs" href="{% url 'bank_statement' account.pk %}">Cancel</a>
+  <button class="bw" type="submit"><i class="bi bi-check2"></i> Record Transaction</button>
+</div>
+</form>
+{% endblock %}
+{% block extra_js %}
+<script>
+function onTypeChange() {
+  const isCredit = document.querySelector('[name="txn_type"][value="credit"]').checked;
+  document.getElementById('lbl-credit').style.borderColor = isCredit ? 'green' : 'var(--border)';
+  document.getElementById('lbl-debit').style.borderColor  = !isCredit ? '#b33a36' : 'var(--border)';
+  // Suggest relevant categories
+  const cat = document.getElementById('cat-select');
+  if (isCredit) {
+    cat.value = 'sale_receipt';
+  } else {
+    cat.value = 'supplier_payment';
+  }
+}
+</script>
+{% endblock %}

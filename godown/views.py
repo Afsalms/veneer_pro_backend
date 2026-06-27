@@ -3,6 +3,8 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.db import models as db_models
+from django.db.models import F as DbF
 from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
 from functools import wraps
@@ -10,6 +12,32 @@ from decimal import Decimal
 from datetime import timedelta, date
 
 MAX_USERS_PER_GODOWN = 5   # maximum users allowed per godown
+
+# ── Preview helper ────────────────────────────────────────────────
+def _preview_response(request, title, icon, header, items, item_cols,
+                      totals, confirm_url, warning=''):
+    """
+    Render a preview page with all POST data embedded as hidden fields.
+    The confirm form POSTs to confirm_url with confirmed=1.
+    """
+    # Preserve all POST data (exclude csrfmiddlewaretoken)
+    form_data = {}
+    for key in request.POST:
+        if key == 'csrfmiddlewaretoken': continue
+        form_data[key] = request.POST.getlist(key)
+    return render(request, 'godown/preview.html', {
+        'preview_title':    title,
+        'preview_icon':     icon,
+        'preview_header':   header,
+        'preview_items':    items,
+        'preview_item_cols':item_cols,
+        'preview_totals':   totals,
+        'preview_warning':  warning,
+        'confirm_url':      confirm_url,
+        'form_data':        form_data,
+    })
+
+
 
 from .models import (
     Godown, GodownSequence, UserProfile,
@@ -19,7 +47,7 @@ from .models import (
     Sale, SaleItem, Expense, Payment, StockAlert,
     Estimation, EstimationItem,
     LookupValue, LookupCategory,
-    StockDamage,
+    StockDamage, BankAccount, BankTransaction,
     get_fifo_grn,
 )
 
@@ -730,9 +758,73 @@ def add_po(request):
     suppliers_list = Supplier.objects.filter(godown=godown)
     products_list  = Product.objects.filter(godown=godown)
     if request.method == 'POST':
+        # ── Parse items (same logic as _save_po_items) ───────────
+        all_qtys = request.POST.getlist('qty_sqm[]')
+        rates    = request.POST.getlist('rate_per_sqm[]')
+        pids     = request.POST.getlist('product[]')
+        n_items  = len(pids)
+        two_per  = len(all_qtys) == n_items * 2
+        errors   = []
+        if not request.POST.get('supplier'):
+            errors.append('Please select a supplier.')
+        if not request.POST.get('date'):
+            errors.append('Please enter a date.')
+        line_items = []
+        for i, pid in enumerate(pids):
+            if not pid: continue
+            qty_str = (all_qtys[i*2+1] or all_qtys[i*2]) if two_per else (all_qtys[i] if i < len(all_qtys) else '')
+            try:
+                qty  = Decimal(qty_str)  if qty_str  else Decimal('0')
+                rate = Decimal(rates[i]) if i < len(rates) and rates[i] else Decimal('0')
+            except Exception:
+                errors.append(f'Item {i+1}: Invalid number.'); continue
+            if qty <= 0:  errors.append(f'Item {i+1}: Quantity must be > 0.'); continue
+            if rate <= 0: errors.append(f'Item {i+1}: Rate must be > 0.'); continue
+            try:    product = products_list.get(pk=pid)
+            except: errors.append(f'Item {i+1}: Product not found.'); continue
+            line_items.append((product, qty, rate))
+        if not line_items and not errors:
+            errors.append('Add at least one item with product, quantity and rate.')
+        if errors:
+            for e in errors: messages.error(request, e)
+            return render(request, 'godown/add_po.html', ctx(request, {
+                'active':'po','suppliers':suppliers_list,'products':products_list
+            }))
+
+        # ── Preview ───────────────────────────────────────────────
+        if not request.POST.get('confirmed'):
+            supplier = suppliers_list.get(pk=request.POST['supplier'])
+            total = sum(q*r for p,q,r in line_items)
+            adv   = Decimal(request.POST.get('advance_paid',0) or 0)
+            header = [
+                ('PO Number', request.POST.get('po_number') or 'Auto'),
+                ('Supplier',  supplier.name),
+                ('Date',      request.POST.get('date')),
+                ('Currency',  request.POST.get('currency','INR')),
+            ]
+            if request.POST.get('expected_arrival'):
+                header.append(('Expected Arrival', request.POST.get('expected_arrival')))
+            rows = [[p.display_name, f'{q:.4f} sq.m', f'₹{r:.2f}/sq.m', f'₹{q*r:,.2f}']
+                    for p,q,r in line_items]
+            totals = [('Total PO Value', f'₹{total:,.2f}', True)]
+            if adv > 0:
+                totals.append(('Advance Paid', f'₹{adv:,.2f}', False))
+                totals.append(('Balance Payable', f'₹{max(Decimal(0),total-adv):,.2f}', False))
+            return _preview_response(request,
+                title=f'Purchase Order — {supplier.name}', icon='📋',
+                header=header, items=rows,
+                item_cols=['Product','Quantity','Rate','Amount'],
+                totals=totals, confirm_url=request.path)
+
+        # ── Confirmed — save ──────────────────────────────────────
         with transaction.atomic():
-            po_number = GodownSequence.format_number(godown, 'po')
-            currency = request.POST.get('currency', 'INR')
+            custom_po = request.POST.get('po_number', '').strip()
+            if custom_po:
+                po_number = custom_po
+                GodownSequence.next(godown, 'po')
+            else:
+                po_number = GodownSequence.format_number(godown, 'po')
+            currency  = request.POST.get('currency', 'INR')
             exch_rate = Decimal(request.POST.get('advance_exchange_rate', '1') or '1')
             po = PurchaseOrder.objects.create(
                 godown=godown, po_number=po_number,
@@ -793,31 +885,94 @@ def _save_po_items(request, po, products_list):
 @login_req
 def edit_po(request, pk):
     godown = get_godown(request)
-    po = get_object_or_404(PurchaseOrder, pk=pk, godown=godown)
-    # Only allow editing open POs
-    if po.status not in ('pending', 'partial'):
-        messages.error(request, 'Only open or partial POs can be edited.')
-        return redirect('po_detail', pk=pk)
-    products_list = Product.objects.filter(godown=godown)
+    po = get_object_or_404(
+        PurchaseOrder.objects.prefetch_related('po_items__product', 'grns__items'),
+        pk=pk, godown=godown)
+    products_list  = Product.objects.filter(godown=godown)
     suppliers_list = Supplier.objects.filter(godown=godown)
+
+    # Build received qty map: product_pk → total qty received via GRNs against this PO
+    received_qty = {}
+    for grn in po.grns.all():
+        for gi in grn.items.all():
+            received_qty[gi.product_id] = received_qty.get(gi.product_id, Decimal('0')) + gi.qty_sqm
+
     if request.method == 'POST':
+        errors = []
+        if not request.POST.get('supplier'): errors.append('Please select a supplier.')
+        if not request.POST.get('date'):     errors.append('Please enter a date.')
+
+        # Parse items — same two-per-item logic as _save_po_items
+        all_qtys = request.POST.getlist('qty_sqm[]')
+        rates    = request.POST.getlist('rate_per_sqm[]')
+        pids     = request.POST.getlist('product[]')
+        units    = request.POST.getlist('qty_unit[]')
+        pieces   = request.POST.getlist('pieces[]')
+        lengths  = request.POST.getlist('sheet_length[]')
+        widths   = request.POST.getlist('sheet_width[]')
+        n_items  = len(pids)
+        two_per  = len(all_qtys) == n_items * 2
+
+        line_items = []
+        for i, pid in enumerate(pids):
+            if not pid: continue
+            qty_str = (all_qtys[i*2+1] or all_qtys[i*2]) if two_per else (all_qtys[i] if i < len(all_qtys) else '')
+            try:
+                qty  = Decimal(qty_str)  if qty_str  else Decimal('0')
+                rate = Decimal(rates[i]) if i < len(rates) and rates[i] else Decimal('0')
+            except Exception:
+                errors.append(f'Item {i+1}: Invalid number.'); continue
+            if qty <= 0:  errors.append(f'Item {i+1}: Quantity must be > 0.'); continue
+            if rate <= 0: errors.append(f'Item {i+1}: Rate must be > 0.'); continue
+            try:    product = products_list.get(pk=pid)
+            except: errors.append(f'Item {i+1}: Product not found.'); continue
+            unit = units[i] if i < len(units) else 'sqm'
+            pcs  = Decimal(pieces[i]) if i < len(pieces) and pieces[i] else None
+            l    = Decimal(lengths[i]) if i < len(lengths) and lengths[i] else None
+            w    = Decimal(widths[i]) if i < len(widths) and widths[i] else None
+            # Safety: cannot order less than already received
+            already = received_qty.get(int(pid), Decimal('0'))
+            if qty < already:
+                errors.append(
+                    f'{product.display_name}: Cannot reduce to {qty:.4f} sq.m — '
+                    f'{already:.4f} sq.m already received in GRN.'
+                )
+                continue
+            line_items.append((product, qty, rate, unit, pcs, l, w))
+
+        if not line_items and not errors:
+            errors.append('Add at least one item.')
+
+        if errors:
+            for e in errors: messages.error(request, e)
+            return render(request, 'godown/edit_po.html', ctx(request, {
+                'active': 'po', 'po': po,
+                'suppliers': suppliers_list, 'products': products_list,
+                'received_qty': received_qty, 'form_errors': errors,
+            }))
+
         with transaction.atomic():
-            po.supplier_id = request.POST['supplier']
-            po.date        = request.POST['date']
-            po.currency    = request.POST.get('currency', 'INR')
-            po.notes       = request.POST.get('notes', '')
+            po.supplier_id       = request.POST['supplier']
+            po.date              = request.POST['date']
+            po.expected_arrival  = request.POST.get('expected_arrival') or None
+            po.currency          = request.POST.get('currency', 'INR')
+            po.notes             = request.POST.get('notes', '')
+            po.po_items.all().delete()
+            for product, qty, rate, unit, pcs, l, w in line_items:
+                PurchaseOrderItem.objects.create(
+                    po=po, product=product,
+                    qty_sqm=qty, rate_per_sqm=rate,
+                    qty_unit=unit, pieces=pcs,
+                    sheet_length=l, sheet_width=w,
+                )
             po.save()
-            # Replace all items (only safe if no GRN received yet)
-            if not po.grns.exists():
-                po.po_items.all().delete()
-                _save_po_items(request, po, products_list)
-            else:
-                messages.warning(request, 'GRN already recorded — items cannot be changed. Other details updated.')
         messages.success(request, f'PO {po.po_number} updated.')
         return redirect('po_detail', pk=pk)
+
     return render(request, 'godown/edit_po.html', ctx(request, {
         'active': 'po', 'po': po,
         'suppliers': suppliers_list, 'products': products_list,
+        'received_qty': received_qty,
     }))
 
 
@@ -882,8 +1037,93 @@ def add_stock_in(request):
     products_list  = Product.objects.filter(godown=godown)
     open_pos       = PurchaseOrder.objects.filter(godown=godown, status__in=['pending','partial']).select_related('supplier')
     if request.method == 'POST':
+        # ── Parse and validate items ──────────────────────────────
+        all_qtys = request.POST.getlist('qty_sqm[]')
+        rates    = request.POST.getlist('rate_per_sqm[]')
+        pids     = request.POST.getlist('product[]')
+        n_items  = len(pids)
+        two_per  = len(all_qtys) == n_items * 2
+        errors   = []
+        if not request.POST.get('supplier'):
+            errors.append('Please select a supplier.')
+        if not request.POST.get('date'):
+            errors.append('Please enter a date.')
+        line_items = []
+        for i, pid in enumerate(pids):
+            if not pid: continue
+            qty_str = (all_qtys[i*2+1] or all_qtys[i*2]) if two_per else (all_qtys[i] if i < len(all_qtys) else '')
+            try:
+                qty  = Decimal(qty_str)  if qty_str  else Decimal('0')
+                rate = Decimal(rates[i]) if i < len(rates) and rates[i] else Decimal('0')
+            except Exception:
+                errors.append(f'Item {i+1}: Invalid number.'); continue
+            if qty <= 0:  errors.append(f'Item {i+1}: Quantity must be > 0.'); continue
+            if rate <= 0: errors.append(f'Item {i+1}: Rate must be > 0.'); continue
+            try:    product = products_list.get(pk=pid)
+            except: errors.append(f'Item {i+1}: Product not found.'); continue
+            line_items.append((product, qty, rate))
+        if not line_items and not errors:
+            errors.append('Add at least one item with product, quantity and rate.')
+        if errors:
+            for e in errors: messages.error(request, e)
+            return render(request, 'godown/add_stock_in.html', ctx(request, {
+                'active':'stock_in','suppliers':suppliers_list,'products':products_list,
+                'open_pos':open_pos,
+                'landing_categories': LookupValue.choices_for(godown, 'landing_expense_category'),
+            }))
+
+        # ── Preview ───────────────────────────────────────────────
+        if not request.POST.get('confirmed'):
+            supplier = suppliers_list.get(pk=request.POST['supplier'])
+            items_total = sum(q*r for p,q,r in line_items)
+            # Landing expenses
+            exp_cats = request.POST.getlist('exp_cat[]')
+            exp_amts = request.POST.getlist('exp_amt[]')
+            landing_total = Decimal('0')
+            landing_rows  = []
+            for j, cat in enumerate(exp_cats):
+                amt_str = exp_amts[j] if j < len(exp_amts) else ''
+                if not cat or not amt_str: continue
+                try: amt = Decimal(amt_str)
+                except: continue
+                if amt <= 0: continue
+                landing_total += amt
+                landing_rows.append([cat, '', '', f'₹{amt:,.2f}'])
+            grand = items_total + landing_total
+            amtp  = Decimal(request.POST.get('amount_paid',0) or 0)
+            header = [
+                ('GRN Number', request.POST.get('grn_number') or 'Auto'),
+                ('Supplier',   supplier.name),
+                ('Date',       request.POST.get('date')),
+                ('Payment',    request.POST.get('payment_mode','credit').title()),
+            ]
+            if request.POST.get('invoice_number'):
+                header.append(('Supplier Invoice', request.POST.get('invoice_number')))
+            rows = [[p.display_name, f'{q:.4f} sq.m', f'₹{r:.2f}/sq.m', f'₹{q*r:,.2f}']
+                    for p,q,r in line_items] + landing_rows
+            totals = [
+                ('Items Total', f'₹{items_total:,.2f}', False),
+            ]
+            if landing_total > 0:
+                totals.append(('Landing Expenses', f'₹{landing_total:,.2f}', False))
+            totals.append(('Grand Total', f'₹{grand:,.2f}', True))
+            if amtp > 0:
+                totals.append(('Amount Paid', f'₹{amtp:,.2f}', False))
+                totals.append(('Balance Payable', f'₹{max(Decimal(0),grand-amtp):,.2f}', False))
+            return _preview_response(request,
+                title=f'GRN — {supplier.name}', icon='📦',
+                header=header, items=rows,
+                item_cols=['Product / Expense', 'Quantity', 'Rate', 'Amount'],
+                totals=totals, confirm_url=request.path)
+
+        # ── Confirmed — save ──────────────────────────────────────
         with transaction.atomic():
-            grn_number = GodownSequence.format_number(godown, 'grn')
+            custom_grn = request.POST.get('grn_number', '').strip()
+            if custom_grn:
+                grn_number = custom_grn
+                GodownSequence.next(godown, 'grn')
+            else:
+                grn_number = GodownSequence.format_number(godown, 'grn')
             po_id = request.POST.get('po') or None
             pay_currency = request.POST.get('payment_currency', 'INR')
             pay_rate = Decimal(request.POST.get('exchange_rate', '1') or '1')
@@ -904,7 +1144,7 @@ def add_stock_in(request):
             _recalc_landed_rates(grn, si_items)
             if po_id:
                 po = PurchaseOrder.objects.get(pk=po_id)
-                po.update_status_from_grns()  # smart: pending/partial/received based on qty
+                po.update_status_from_grns()
         messages.success(request, f'GRN {grn.grn_number} saved.')
         return redirect('stock_in_list')
     return render(request, 'godown/add_stock_in.html', ctx(request, {
@@ -1079,7 +1319,49 @@ def add_sale(request):
                 'active':'sales','customers':customers_list,'products':products_list,'godown_obj':godown
             }))
 
-        # ── PASS 2: All checks passed — save inside atomic block ──
+        # ── PREVIEW: show summary before saving ──────────────────
+        if not request.POST.get('confirmed'):
+            customer = customers_list.get(pk=request.POST['customer'])
+            sale_type = request.POST.get('sale_type', 'bill')
+            gst_rate  = Decimal('0') if sale_type == 'cash_memo' else godown.gst_rate
+            taxable   = sum(qty * rate for _, _, _, qty, rate in line_items)
+            gst_amt   = (taxable * gst_rate / 100).quantize(Decimal('0.01'))
+            grand     = taxable + gst_amt
+            amr       = Decimal(request.POST.get('amount_received', 0) or 0)
+            header = [
+                ('Bill Number',   request.POST.get('bill_number') or 'Auto'),
+                ('Type',          'Tax Invoice' if sale_type == 'bill' else 'Cash Memo'),
+                ('Customer',      customer.name),
+                ('Date',          request.POST.get('date')),
+                ('Payment Mode',  request.POST.get('payment_mode','credit').title()),
+            ]
+            if request.POST.get('due_date'):
+                header.append(('Due Date', request.POST.get('due_date')))
+            items_rows = [
+                [p.display_name,
+                 f'{qty:.4f} sq.m',
+                 f'₹{rate:.2f}/sq.m',
+                 f'₹{qty*rate:,.2f}']
+                for _, _, p, qty, rate in line_items
+            ]
+            totals = [
+                ('Taxable Amount', f'₹{taxable:,.2f}', False),
+                (f'GST ({gst_rate}%)', f'₹{gst_amt:,.2f}', False),
+                ('Grand Total', f'₹{grand:,.2f}', True),
+            ]
+            if amr > 0:
+                totals.append(('Amount Received', f'₹{amr:,.2f}', False))
+                totals.append(('Balance Due', f'₹{max(Decimal(0), grand-amr):,.2f}', False))
+            return _preview_response(
+                request,
+                title=f'New Sale to {customer.name}',
+                icon='🧾',
+                header=header,
+                items=items_rows,
+                item_cols=['Product', 'Quantity', 'Rate', 'Amount'],
+                totals=totals,
+                confirm_url=request.path,
+            )
         with transaction.atomic():
             # Re-lock rows to prevent race condition between validation and save
             locked_products = {
@@ -1107,7 +1389,13 @@ def add_sale(request):
             sale_type   = request.POST.get('sale_type', 'bill')
             # Cash memos get their own sequence (CM-001, CM-002 ...)
             seq_type    = 'cash_memo' if sale_type == 'cash_memo' else 'sale'
-            bill_number = GodownSequence.format_number(godown, seq_type)
+            custom_num  = request.POST.get('bill_number', '').strip()
+            if custom_num:
+                bill_number = custom_num
+                # Still advance the sequence so next auto number doesn't collide
+                GodownSequence.next(godown, seq_type)
+            else:
+                bill_number = GodownSequence.format_number(godown, seq_type)
             sale = Sale.objects.create(
                 godown=godown, bill_number=bill_number,
                 sale_type=sale_type,
@@ -1150,8 +1438,20 @@ def add_sale(request):
 
         messages.success(request, f'Sale {sale.bill_number} saved.')
         return redirect('sales_list')
+    # Preview next numbers for display (don't advance sequence)
+    next_sale_num = GodownSequence.format_number.__func__ and None  # just peek
+    from godown.models import GodownSequence as GS
+    def peek_next(godown, seq_type):
+        obj, _ = GS.objects.get_or_create(godown=godown, seq_type=seq_type, defaults={'last_num':0})
+        prefix_map = {'sale': godown.invoice_prefix, 'cash_memo': 'CM',
+                      'po': godown.po_prefix, 'grn': godown.grn_prefix, 'est': 'EST'}
+        offset_map = {'sale': 1000, 'cash_memo': 0, 'po': 100, 'grn': 100, 'est': 100}
+        num = obj.last_num + 1 + offset_map.get(seq_type, 0)
+        return f"{prefix_map.get(seq_type,'')}-{num}"
     return render(request, 'godown/add_sale.html', ctx(request, {
-        'active':'sales','customers':customers_list,'products':products_list,'godown_obj':godown
+        'active':'sales','customers':customers_list,'products':products_list,'godown_obj':godown,
+        'next_bill_number': peek_next(godown, 'sale'),
+        'next_cm_number':   peek_next(godown, 'cash_memo'),
     }))
 
 
@@ -1173,22 +1473,51 @@ def receivables(request):
 def record_sale_payment(request, pk):
     godown = get_godown(request)
     sale = get_object_or_404(Sale, pk=pk, godown=godown)
+    bank_accounts_qs = BankAccount.objects.filter(godown=godown, is_active=True)
     if request.method == 'POST':
-        amt = Decimal(request.POST.get('amount',0) or 0)
+        amt = Decimal(request.POST.get('amount', 0) or 0)
         if amt > 0:
-            balance = sale.balance
-            Payment.objects.create(sale=sale, date=request.POST.get('date', timezone.now().date()),
-                amount=amt, mode=request.POST.get('mode','cash'),
-                reference=request.POST.get('reference',''), note=request.POST.get('note',''),
-                recorded_by=request.user)
-            sale.amount_received += amt; sale.save()
+            mode           = request.POST.get('mode', 'cash')
+            bank_account_id = request.POST.get('bank_account') or None
+            reference      = request.POST.get('reference', '')
+            note           = request.POST.get('note', '')
+            date           = request.POST.get('date', timezone.now().date())
+            balance        = sale.balance
+
+            Payment.objects.create(
+                sale=sale, date=date, amount=amt, mode=mode,
+                reference=reference, note=note, recorded_by=request.user,
+            )
+            sale.amount_received += amt
+            sale.save()
+
+            # Auto-create bank transaction if mode is non-cash and account selected
+            if bank_account_id and mode not in ('cash', 'credit'):
+                try:
+                    bank_acc = BankAccount.objects.get(pk=bank_account_id, godown=godown)
+                    BankTransaction.objects.create(
+                        account=bank_acc,
+                        date=date,
+                        txn_type='credit',
+                        category='sale_receipt',
+                        amount=amt,
+                        description=f'Receipt from {sale.customer.name} — {sale.bill_number}',
+                        reference=reference,
+                        sale=sale,
+                        recorded_by=request.user,
+                    )
+                except BankAccount.DoesNotExist:
+                    pass
+
             if amt > balance:
-                advance = amt - balance
-                messages.success(request, f'Payment ₹{amt:,.0f} recorded. ₹{advance:,.0f} is advance credit.')
+                messages.success(request, f'Payment ₹{amt:,.0f} recorded. ₹{amt-balance:,.0f} is advance credit.')
             else:
                 messages.success(request, f'Payment ₹{amt:,.0f} recorded for {sale.bill_number}.')
         return redirect('customer_statement', pk=sale.customer.pk)
-    return render(request, 'godown/record_sale_payment.html', ctx(request, {'active':'receivables','sale':sale}))
+    return render(request, 'godown/record_sale_payment.html', ctx(request, {
+        'active': 'receivables', 'sale': sale,
+        'bank_accounts': bank_accounts_qs,
+    }))
 
 
 # ── Payables ──────────────────────────────────────────────────────
@@ -1209,32 +1538,54 @@ def payables(request):
 def record_payment(request, pk):
     godown = get_godown(request)
     grn = get_object_or_404(StockIn, pk=pk, godown=godown)
+    bank_accounts_qs = BankAccount.objects.filter(godown=godown, is_active=True)
     if request.method == 'POST':
-        amt          = Decimal(request.POST.get('amount', 0) or 0)
-        pay_currency = request.POST.get('payment_currency', 'INR')
-        pay_rate     = Decimal(request.POST.get('exchange_rate', '1') or '1')
+        amt             = Decimal(request.POST.get('amount', 0) or 0)
+        pay_currency    = request.POST.get('payment_currency', 'INR')
+        pay_rate        = Decimal(request.POST.get('exchange_rate', '1') or '1')
+        mode            = request.POST.get('payment_mode', 'bank')
+        bank_account_id = request.POST.get('bank_account') or None
+        reference       = request.POST.get('reference', '')
+        date            = request.POST.get('date', str(timezone.now().date()))
         if amt <= 0:
             messages.error(request, 'Enter a valid payment amount.')
-            return render(request, 'godown/record_payment.html', ctx(request, {'active':'payables','grn':grn}))
+            return render(request, 'godown/record_payment.html', ctx(request, {
+                'active': 'payables', 'grn': grn, 'bank_accounts': bank_accounts_qs,
+            }))
         balance = grn.balance
         amt_inr = amt * pay_rate if pay_currency == 'USD' else amt
+        grn.amount_paid += amt
+        grn.payment_currency = pay_currency
+        grn.exchange_rate    = pay_rate
+        grn.save()
+
+        # Auto-create bank transaction if account selected
+        if bank_account_id:
+            try:
+                bank_acc = BankAccount.objects.get(pk=bank_account_id, godown=godown)
+                BankTransaction.objects.create(
+                    account=bank_acc,
+                    date=date,
+                    txn_type='debit',
+                    category='supplier_payment',
+                    amount=amt_inr,
+                    description=f'Payment to {grn.supplier.name} — {grn.grn_number}',
+                    reference=reference,
+                    grn=grn,
+                    recorded_by=request.user,
+                )
+            except BankAccount.DoesNotExist:
+                pass
+
         if amt_inr > balance + Decimal('0.01'):
-            # Overpayment — record it (becomes advance credit on next GRN)
-            grn.amount_paid += amt
-            grn.payment_currency = pay_currency
-            grn.exchange_rate = pay_rate
-            grn.save()
-            excess = amt_inr - balance
             messages.success(request, f'Payment recorded for {grn.grn_number}. '
-                             f'₹{excess:,.0f} excess will be treated as advance credit.')
+                             f'₹{amt_inr-balance:,.0f} excess treated as advance credit.')
         else:
-            grn.amount_paid += amt
-            grn.payment_currency = pay_currency
-            grn.exchange_rate = pay_rate
-            grn.save()
-            messages.success(request, f'Payment recorded for {grn.grn_number}.')
+            messages.success(request, f'Payment ₹{amt_inr:,.0f} recorded for {grn.grn_number}.')
         return redirect('payables')
-    return render(request, 'godown/record_payment.html', ctx(request, {'active':'payables','grn':grn}))
+    return render(request, 'godown/record_payment.html', ctx(request, {
+        'active': 'payables', 'grn': grn, 'bank_accounts': bank_accounts_qs,
+    }))
 
 
 # ── Expenses ──────────────────────────────────────────────────────
@@ -1276,25 +1627,95 @@ def expenses(request):
 @login_req
 def add_expense(request):
     godown = get_godown(request)
+    bank_accounts_qs = BankAccount.objects.filter(godown=godown, is_active=True)
     if request.method == 'POST':
-        Expense.objects.create(godown=godown, category=request.POST['category'],
+        errors = []
+        if not request.POST.get('category'):  errors.append('Please select a category.')
+        if not request.POST.get('date'):       errors.append('Please enter a date.')
+        if not request.POST.get('description','').strip(): errors.append('Description is required.')
+        if not request.POST.get('paid_to','').strip(): errors.append('Paid To is required.')
+        try:
+            amt = Decimal(request.POST.get('amount','0') or '0')
+            if amt <= 0: errors.append('Amount must be greater than 0.')
+        except Exception:
+            errors.append('Invalid amount.')
+        if errors:
+            for e in errors: messages.error(request, e)
+            return render(request, 'godown/add_expense.html', ctx(request, {
+                'active':'expenses',
+                'expense_categories': LookupValue.choices_for(godown, 'expense_category'),
+                'bank_accounts': bank_accounts_qs,
+            }))
+
+        if not request.POST.get('confirmed'):
+            mode = request.POST.get('payment_mode','cash')
+            bank_account_id = request.POST.get('bank_account','')
+            bank_name = ''
+            if bank_account_id:
+                try:
+                    ba = bank_accounts_qs.get(pk=bank_account_id)
+                    bank_name = f' via {ba.account_name}'
+                except BankAccount.DoesNotExist:
+                    pass
+            header = [
+                ('Category',    request.POST.get('category','')),
+                ('Date',        request.POST.get('date','')),
+                ('Description', request.POST.get('description','')),
+                ('Paid To',     request.POST.get('paid_to','')),
+                ('Amount',      f"₹{amt:,.2f}"),
+                ('Mode',        f"{mode.title()}{bank_name}"),
+                ('Status',      request.POST.get('status','paid').title()),
+            ]
+            if request.POST.get('bill_number'):
+                header.append(('Bill / Receipt No', request.POST.get('bill_number')))
+            return _preview_response(request,
+                title='Record Expense', icon='💸',
+                header=header, items=[],
+                item_cols=[], totals=[('Amount', f"₹{amt:,.2f}", True)],
+                confirm_url=request.path)
+
+        # Save expense
+        expense = Expense.objects.create(
+            godown=godown, category=request.POST['category'],
             date=request.POST['date'], description=request.POST.get('description',''),
-            paid_to=request.POST.get('paid_to',''), amount=request.POST.get('amount',0) or 0,
+            paid_to=request.POST.get('paid_to',''), amount=amt,
             payment_mode=request.POST.get('payment_mode','cash'),
-            status=request.POST.get('status','paid'), bill_number=request.POST.get('bill_number',''))
+            status=request.POST.get('status','paid'),
+            bill_number=request.POST.get('bill_number',''),
+        )
+        # Auto-create bank transaction for non-cash paid expenses
+        mode = request.POST.get('payment_mode','cash')
+        bank_account_id = request.POST.get('bank_account','')
+        if bank_account_id and mode not in ('cash', 'credit', 'pending'):
+            try:
+                bank_acc = BankAccount.objects.get(pk=bank_account_id, godown=godown)
+                BankTransaction.objects.create(
+                    account=bank_acc,
+                    date=request.POST['date'],
+                    txn_type='debit',
+                    category='expense',
+                    amount=amt,
+                    description=f"{expense.get_category_display()} — {expense.description} (Paid to {expense.paid_to})",
+                    reference=request.POST.get('bill_number',''),
+                    expense=expense,
+                    recorded_by=request.user,
+                )
+            except BankAccount.DoesNotExist:
+                pass
         messages.success(request, 'Expense recorded.')
         return redirect('expenses')
-    godown = get_godown(request)
     return render(request, 'godown/add_expense.html', ctx(request, {
         'active':'expenses',
         'expense_categories': LookupValue.choices_for(godown, 'expense_category'),
+        'bank_accounts': bank_accounts_qs,
     }))
 
 
 @login_req
 def edit_expense(request, pk):
-    godown = get_godown(request)
+    godown  = get_godown(request)
     expense = get_object_or_404(Expense, pk=pk, godown=godown)
+    bank_accounts_qs = BankAccount.objects.filter(godown=godown, is_active=True)
     if request.method == 'POST':
         expense.category     = request.POST['category']
         expense.date         = request.POST['date']
@@ -1311,6 +1732,7 @@ def edit_expense(request, pk):
         'active': 'expenses',
         'expense': expense,
         'expense_categories': LookupValue.choices_for(godown, 'expense_category'),
+        'bank_accounts': bank_accounts_qs,
     }))
 
 
@@ -1880,6 +2302,68 @@ def add_estimation(request):
         cust.computed_outstanding = max(Decimal("0"), cust.db_total_billed - cust.db_total_received)
     products_list = Product.objects.filter(godown=godown)
     if request.method == 'POST':
+        # Validate
+        errors = []
+        if not request.POST.get('date'): errors.append('Please enter a date.')
+        qtys  = request.POST.getlist('qty_sqm[]')
+        rates = request.POST.getlist('rate_per_sqm[]')
+        descs = request.POST.getlist('description[]')
+        pids  = request.POST.getlist('product[]')
+        line_items = []
+        for i, pid in enumerate(pids):
+            try:
+                qty  = Decimal(qtys[i])  if i<len(qtys)  and qtys[i]  else Decimal('0')
+                rate = Decimal(rates[i]) if i<len(rates) and rates[i] else Decimal('0')
+            except Exception:
+                errors.append(f'Item {i+1}: Invalid number.'); continue
+            if qty <= 0 or rate <= 0: continue
+            desc = descs[i] if i < len(descs) else ''
+            if pid:
+                try:    product = products_list.get(pk=pid)
+                except: errors.append(f'Item {i+1}: Product not found.'); continue
+                label = product.display_name
+            else:
+                label = desc or f'Item {i+1}'
+            line_items.append((pid, label, qty, rate, desc))
+        if not line_items and not errors:
+            errors.append('Add at least one line item.')
+        if errors:
+            for e in errors: messages.error(request, e)
+            return render(request, 'godown/add_estimation.html', ctx(request, {
+                'active':'estimations', 'customers':customers_list, 'products':products_list,
+            }))
+
+        # Preview
+        if not request.POST.get('confirmed'):
+            include_gst = request.POST.get('include_gst') == 'on'
+            subtotal = sum(q*r for _,_,q,r,_ in line_items)
+            gst_amt  = (subtotal * godown.gst_rate / 100).quantize(Decimal('0.01')) if include_gst else Decimal('0')
+            total    = subtotal + gst_amt
+            cust_id  = request.POST.get('customer')
+            cust_name = ''
+            if cust_id:
+                try: cust_name = customers_list.get(pk=cust_id).name
+                except: pass
+            if not cust_name: cust_name = request.POST.get('customer_name','') or 'Walk-in'
+            header = [
+                ('Customer',    cust_name),
+                ('Date',        request.POST.get('date','')),
+                ('Valid Until', request.POST.get('valid_until','') or 'No expiry'),
+                ('GST',         f'{godown.gst_rate}%' if include_gst else 'Not included'),
+            ]
+            rows = [[label, f'{q:.4f} sq.m', f'₹{r:.2f}/sq.m', f'₹{q*r:,.2f}']
+                    for _, label, q, r, _ in line_items]
+            totals = [('Subtotal', f'₹{subtotal:,.2f}', False)]
+            if include_gst:
+                totals.append((f'GST ({godown.gst_rate}%)', f'₹{gst_amt:,.2f}', False))
+            totals.append(('Total', f'₹{total:,.2f}', True))
+            return _preview_response(request,
+                title=f'Quotation for {cust_name}', icon='📝',
+                header=header, items=rows,
+                item_cols=['Product / Description','Quantity','Rate','Amount'],
+                totals=totals, confirm_url=request.path)
+
+        # Confirmed — save
         with transaction.atomic():
             est_number = GodownSequence.format_number(godown, 'est')
             cust_id = request.POST.get('customer') or None
@@ -1895,24 +2379,19 @@ def add_estimation(request):
                 include_gst=request.POST.get('include_gst') == 'on',
                 status='draft',
             )
-            qtys  = request.POST.getlist('qty_sqm[]')
-            rates = request.POST.getlist('rate_per_sqm[]')
-            descs = request.POST.getlist('description[]')
-            pieces= request.POST.getlist('pieces[]')
-            lens  = request.POST.getlist('sheet_length[]')
-            wids  = request.POST.getlist('sheet_width[]')
-            for i, pid in enumerate(request.POST.getlist('product[]')):
-                qty  = Decimal(qtys[i])  if i<len(qtys)  and qtys[i]  else Decimal('0')
-                rate = Decimal(rates[i]) if i<len(rates) and rates[i] else Decimal('0')
-                if qty <= 0 or rate <= 0: continue
+            pieces = request.POST.getlist('pieces[]')
+            lens   = request.POST.getlist('sheet_length[]')
+            wids   = request.POST.getlist('sheet_width[]')
+            for pid, label, qty, rate, desc in line_items:
+                i = pids.index(pid) if pid in pids else -1
                 EstimationItem.objects.create(
                     estimation=est,
                     product_id=pid if pid else None,
-                    description=descs[i] if i<len(descs) else '',
+                    description=desc,
                     qty_sqm=qty, rate_per_sqm=rate,
-                    pieces=Decimal(pieces[i]) if i<len(pieces) and pieces[i] else None,
-                    sheet_length=Decimal(lens[i]) if i<len(lens) and lens[i] else None,
-                    sheet_width=Decimal(wids[i]) if i<len(wids) and wids[i] else None,
+                    pieces=Decimal(pieces[i]) if i>=0 and i<len(pieces) and pieces[i] else None,
+                    sheet_length=Decimal(lens[i]) if i>=0 and i<len(lens) and lens[i] else None,
+                    sheet_width=Decimal(wids[i]) if i>=0 and i<len(wids) and wids[i] else None,
                 )
         messages.success(request, f'Estimation {est.est_number} created.')
         return redirect('estimation_detail', pk=est.pk)
@@ -2126,6 +2605,128 @@ def lookup_api(request, category):
 
 
 # ── GRN Detail ────────────────────────────────────────────────────
+
+@login_req
+@login_req
+def edit_grn(request, pk):
+    godown = get_godown(request)
+    grn = get_object_or_404(StockIn.objects.prefetch_related('items__product','landing_expenses'), pk=pk, godown=godown)
+    suppliers_list = Supplier.objects.filter(godown=godown)
+    products_list  = Product.objects.filter(godown=godown)
+
+    if request.method == 'POST':
+        errors = []
+        supplier_id = request.POST.get('supplier', '').strip()
+        date_str    = request.POST.get('date', '').strip()
+        if not supplier_id: errors.append('Please select a supplier.')
+        if not date_str:    errors.append('Please enter a date.')
+
+        qtys  = request.POST.getlist('qty_sqm[]')
+        rates = request.POST.getlist('rate_per_sqm[]')
+        pids  = request.POST.getlist('product[]')
+        units = request.POST.getlist('qty_unit[]')
+        line_items = []
+        for i, pid in enumerate(pids):
+            if not pid: continue
+            try:
+                qty_str = qtys[i] if i < len(qtys) else ''
+                qty  = Decimal(qty_str)  if qty_str  else Decimal('0')
+                rate = Decimal(rates[i]) if i < len(rates) and rates[i] else Decimal('0')
+            except Exception:
+                errors.append(f'Item {i+1}: Invalid number.'); continue
+            if qty <= 0:  errors.append(f'Item {i+1}: Quantity must be > 0.'); continue
+            if rate <= 0: errors.append(f'Item {i+1}: Rate must be > 0.');     continue
+            try:    product = products_list.get(pk=pid)
+            except: errors.append(f'Item {i+1}: Product not found.'); continue
+            unit = units[i] if i < len(units) else 'sqm'
+            line_items.append((product, qty, rate, unit))
+
+        if not line_items and not errors:
+            errors.append('Add at least one item with product, quantity and rate.')
+
+        # GRN edit: check we are not reducing below what has already been sold
+        if not errors:
+            for product, qty, rate, unit in line_items:
+                # qty_sold from this specific GRN (FIFO — product may have been sold across GRNs)
+                sold_from_grn = sum(
+                    si.qty_sqm for si in SaleItem.objects.filter(
+                        product=product, grn_source=grn
+                    )
+                ) if hasattr(SaleItem, 'grn_source') else Decimal('0')
+                if qty < sold_from_grn:
+                    errors.append(
+                        f'{product.display_name}: Cannot reduce to {qty:.4f} sq.m — '
+                        f'{sold_from_grn:.4f} sq.m has already been sold from this GRN.'
+                    )
+
+        if errors:
+            for err in errors: messages.error(request, err)
+            return render(request, 'godown/edit_grn.html', ctx(request, {
+                'active': 'stock_in', 'grn': grn,
+                'suppliers': suppliers_list, 'products': products_list,
+                'form_errors': errors,
+            }))
+
+        with transaction.atomic():
+            grn.supplier_id    = supplier_id
+            grn.date           = date_str
+            grn.invoice_number = request.POST.get('invoice_number', '')
+            grn.notes          = request.POST.get('notes', '')
+            # Step 1: reverse old stock additions (GRN added stock, so remove it)
+            for old in grn.items.all():
+                Product.objects.filter(pk=old.product_id).update(
+                    stock_qty=DbF('stock_qty') - old.qty_sqm
+                )
+            grn.items.all().delete()
+            grn.landing_expenses.all().delete()
+            # Step 2: write new items and add stock
+            si_items = []
+            for product, qty, rate, unit in line_items:
+                # Reload product to get fresh stock_qty after restore
+                product = Product.objects.get(pk=product.pk)
+                product.update_avg_cost(qty, rate)
+                si = StockInItem.objects.create(
+                    stock_in=grn, product=product,
+                    qty_sqm=qty, rate_per_sqm=rate, landed_rate=rate, qty_unit=unit,
+                )
+                Product.objects.filter(pk=product.pk).update(
+                    stock_qty=DbF('stock_qty') + qty
+                )
+                si_items.append(si)
+            # Landing expenses
+            exp_cats  = request.POST.getlist('exp_cat[]')
+            exp_amts  = request.POST.getlist('exp_amt[]')
+            exp_paids = request.POST.getlist('exp_paid_to[]')
+            exp_descs = request.POST.getlist('exp_desc[]')
+            total_landing = Decimal('0')
+            for j, cat in enumerate(exp_cats):
+                amt_str = exp_amts[j] if j < len(exp_amts) else ''
+                if not cat or not amt_str: continue
+                try: amt = Decimal(amt_str)
+                except: continue
+                if amt <= 0: continue
+                LandingExpense.objects.create(
+                    stock_in=grn, category=cat, amount=amt,
+                    paid_to=exp_paids[j] if j < len(exp_paids) else '',
+                    description=exp_descs[j] if j < len(exp_descs) else '',
+                )
+                total_landing += amt
+            if si_items and total_landing > 0:
+                total_qty = sum(s.qty_sqm for s in si_items)
+                for s in si_items:
+                    share = (s.qty_sqm / total_qty) * total_landing
+                    s.landed_rate = s.rate_per_sqm + (share / s.qty_sqm)
+                    s.save(update_fields=['landed_rate'])
+            grn.save()
+        messages.success(request, f'GRN {grn.grn_number} updated successfully.')
+        return redirect('grn_detail', pk=pk)
+
+    return render(request, 'godown/edit_grn.html', ctx(request, {
+        'active': 'stock_in', 'grn': grn,
+        'suppliers': suppliers_list, 'products': products_list,
+    }))
+
+
 @login_req
 def grn_detail(request, pk):
     godown = get_godown(request)
@@ -2140,6 +2741,108 @@ def grn_detail(request, pk):
 
 
 # ── Sale Detail ───────────────────────────────────────────────────
+
+@login_req
+@login_req
+def edit_sale(request, pk):
+    godown = get_godown(request)
+    sale = get_object_or_404(Sale.objects.prefetch_related('items__product'), pk=pk, godown=godown)
+    customers_list = Customer.objects.filter(godown=godown)
+    products_list  = Product.objects.filter(godown=godown)
+
+    if request.method == 'POST':
+        errors = []
+        customer_id = request.POST.get('customer', '').strip()
+        date_str    = request.POST.get('date', '').strip()
+        if not customer_id: errors.append('Please select a customer.')
+        if not date_str:    errors.append('Please enter a date.')
+
+        qtys = request.POST.getlist('qty_sqm[]')
+        rates = request.POST.getlist('rate_per_sqm[]')
+        pids  = request.POST.getlist('product[]')
+        line_items = []
+        for i, pid in enumerate(pids):
+            if not pid: continue
+            try:
+                qty  = Decimal(qtys[i])  if i < len(qtys)  and qtys[i]  else Decimal('0')
+                rate = Decimal(rates[i]) if i < len(rates) and rates[i] else Decimal('0')
+            except Exception:
+                errors.append(f'Item {i+1}: Invalid number — enter digits only.'); continue
+            if qty <= 0:  errors.append(f'Item {i+1}: Quantity must be > 0.'); continue
+            if rate <= 0: errors.append(f'Item {i+1}: Rate must be > 0.'); continue
+            try:    product = products_list.get(pk=pid)
+            except: errors.append(f'Item {i+1}: Product not found.'); continue
+            line_items.append((product, qty, rate))
+
+        if not line_items and not errors:
+            errors.append('Add at least one item with product, quantity and rate.')
+
+        # Stock availability — available = current stock + what this sale holds
+        if not errors:
+            old_qtys = {}
+            for old in sale.items.all():
+                old_qtys[old.product_id] = old_qtys.get(old.product_id, Decimal('0')) + old.qty_sqm
+            new_qtys = {}
+            for p, q, r in line_items:
+                new_qtys[p.pk] = new_qtys.get(p.pk, Decimal('0')) + q
+            for product, qty, rate in line_items:
+                available = product.stock_qty + old_qtys.get(product.pk, Decimal('0'))
+                if new_qtys[product.pk] > available:
+                    errors.append(
+                        f'{product.display_name}: Only {available:.4f} sq.m available '
+                        f'(current stock {product.stock_qty:.4f} + {old_qtys.get(product.pk,0):.4f} on this sale), '
+                        f'but entered {new_qtys[product.pk]:.4f} sq.m.'
+                    )
+
+        if errors:
+            for err in errors: messages.error(request, err)
+            return render(request, 'godown/edit_sale.html', ctx(request, {
+                'active': 'sales', 'sale': sale,
+                'customers': customers_list, 'products': products_list,
+                'godown_obj': godown, 'form_errors': errors,
+            }))
+
+        with transaction.atomic():
+            sale.customer_id      = customer_id
+            sale.date             = date_str
+            sale.due_date         = request.POST.get('due_date') or None
+            sale.transport        = request.POST.get('transport', '')
+            sale.po_reference     = request.POST.get('po_reference', '')
+            sale.vehicle_number   = request.POST.get('vehicle_number', '')
+            sale.transporter_name = request.POST.get('transporter_name', '')
+            sale.transporter_id   = request.POST.get('transporter_id', '')
+            sale.transport_distance = request.POST.get('transport_distance') or None
+            sale.transport_mode   = request.POST.get('transport_mode', '1')
+            sale.ship_name    = request.POST.get('ship_name', '')
+            sale.ship_addr1   = request.POST.get('ship_addr1', '')
+            sale.ship_pincode = request.POST.get('ship_pincode', '')
+            sale.ship_state   = request.POST.get('ship_state', '')
+            sale.notes        = request.POST.get('notes', '')
+            # Restore stock from OLD items atomically
+            for old in sale.items.all():
+                Product.objects.filter(pk=old.product_id).update(
+                    stock_qty=DbF('stock_qty') + old.qty_sqm
+                )
+            sale.items.all().delete()
+            # Write NEW items atomically
+            for product, qty, rate in line_items:
+                product_fresh = Product.objects.get(pk=product.pk)
+                SaleItem.objects.create(sale=sale, product=product_fresh,
+                    qty_sqm=qty, rate_per_sqm=rate, cost_at_sale=product_fresh.avg_cost)
+                Product.objects.filter(pk=product.pk).update(
+                    stock_qty=DbF('stock_qty') - qty
+                )
+            sale.save()
+        messages.success(request, f'Sale {sale.bill_number} updated successfully.')
+        return redirect('sale_detail', pk=pk)
+
+    return render(request, 'godown/edit_sale.html', ctx(request, {
+        'active': 'sales', 'sale': sale,
+        'customers': customers_list, 'products': products_list,
+        'godown_obj': godown,
+    }))
+
+
 @login_req
 def sale_detail(request, pk):
     godown = get_godown(request)
@@ -2362,16 +3065,14 @@ def add_damage(request, grn_pk=None):
             total_damaged_existing = sum(
                 d.qty_sqm for d in StockDamage.objects.filter(product=product, godown=godown)
             )
-            available_sqft = total_received - total_sold - total_damaged_existing
-            available_sqm  = available_sqft * SQFT_TO_SQM
-            qty_sqm = Decimal(qty)
-            qty_dec = (qty_sqm * SQM_TO_SQFT).quantize(Decimal('0.0001'))  # convert to sqft for DB
+            available = total_received - total_sold - total_damaged_existing
+            qty_dec   = Decimal(qty)
 
-            if qty_dec > available_sqft:
+            if qty_dec > available:
                 errors.append(
-                    f'Only {available_sqm:.4f} sq.m available for {product.display_name} '
-                    f'(received {total_received * SQFT_TO_SQM:.2f} − sold {total_sold * SQFT_TO_SQM:.2f} − '
-                    f'already damaged {total_damaged_existing * SQFT_TO_SQM:.2f} sq.m).'
+                    f'Only {available:.4f} sq.m available for {product.display_name} '
+                    f'(received {total_received:.4f} − sold {total_sold:.4f} − '
+                    f'already damaged {total_damaged_existing:.4f} sq.m).'
                 )
 
         if errors:
@@ -2386,6 +3087,30 @@ def add_damage(request, grn_pk=None):
                 cost_rate = si_item.landed_rate if si_item else product.avg_cost
             else:
                 cost_rate = product.avg_cost
+
+            write_off = (qty_dec * cost_rate).quantize(Decimal('0.01'))
+
+            # Preview before recording damage (irreversible stock deduction)
+            if not request.POST.get('confirmed'):
+                header = [
+                    ('Product',    product.display_name),
+                    ('Quantity',   f'{qty_dec:.4f} sq.m'),
+                    ('Category',   dict(StockDamage.DAMAGE_CATEGORY).get(category, category)),
+                    ('Date',       str(date)),
+                    ('Cost Rate',  f'₹{cost_rate:.2f}/sq.m'),
+                    ('Write-off',  f'₹{write_off:,.2f}'),
+                ]
+                if grn_obj:
+                    header.insert(1, ('GRN', grn_obj.grn_number))
+                if description:
+                    header.append(('Note', description))
+                return _preview_response(request,
+                    title=f'Record Damage — {product.display_name}', icon='⚠️',
+                    header=header, items=[],
+                    item_cols=[],
+                    totals=[('Write-off Value', f'₹{write_off:,.2f}', True)],
+                    confirm_url=request.path,
+                    warning=f'This will permanently deduct {qty_dec:.4f} sq.m from stock. This action cannot be undone.')
 
             damage = StockDamage.objects.create(
                 godown=godown, product=product, grn=grn_obj,
@@ -2653,3 +3378,158 @@ def export_einvoice_csv(request):
             ])
 
     return resp
+
+
+# ── Bank Accounts ─────────────────────────────────────────────────
+@login_req
+def bank_accounts(request):
+    godown   = get_godown(request)
+    accounts = BankAccount.objects.filter(godown=godown, is_active=True)
+    return render(request, 'godown/bank_accounts.html', ctx(request, {
+        'active': 'bank', 'accounts': accounts,
+    }))
+
+
+@login_req
+def add_bank_account(request):
+    godown = get_godown(request)
+    if request.method == 'POST':
+        errors = []
+        name = request.POST.get('account_name','').strip()
+        if not name: errors.append('Account name is required.')
+        ob_raw = request.POST.get('opening_balance','0').strip() or '0'
+        try:    opening_balance = Decimal(ob_raw)
+        except: errors.append('Opening balance must be a number.'); opening_balance = Decimal('0')
+        if errors:
+            for e in errors: messages.error(request, e)
+        else:
+            BankAccount.objects.create(
+                godown=godown,
+                account_name=name,
+                bank_name=request.POST.get('bank_name',''),
+                account_no=request.POST.get('account_no',''),
+                ifsc=request.POST.get('ifsc',''),
+                upi_id=request.POST.get('upi_id',''),
+                account_type=request.POST.get('account_type','current'),
+                opening_balance=opening_balance,
+            )
+            messages.success(request, f'Bank account "{name}" added.')
+            return redirect('bank_accounts')
+    return render(request, 'godown/add_bank_account.html', ctx(request, {'active':'bank'}))
+
+
+@login_req
+def edit_bank_account(request, pk):
+    godown  = get_godown(request)
+    account = get_object_or_404(BankAccount, pk=pk, godown=godown)
+    if request.method == 'POST':
+        account.account_name    = request.POST.get('account_name', account.account_name)
+        account.bank_name       = request.POST.get('bank_name','')
+        account.account_no      = request.POST.get('account_no','')
+        account.ifsc            = request.POST.get('ifsc','')
+        account.upi_id          = request.POST.get('upi_id','')
+        account.account_type    = request.POST.get('account_type','current')
+        account.opening_balance = Decimal(request.POST.get('opening_balance','0') or '0')
+        account.save()
+        messages.success(request, 'Account updated.')
+        return redirect('bank_statement', pk=pk)
+    return render(request, 'godown/add_bank_account.html', ctx(request, {
+        'active': 'bank', 'account': account,
+    }))
+
+
+@login_req
+def bank_statement(request, pk):
+    godown  = get_godown(request)
+    account = get_object_or_404(BankAccount, pk=pk, godown=godown)
+
+    # Date filter
+    from_date = request.GET.get('from')
+    to_date   = request.GET.get('to')
+    txns = BankTransaction.objects.filter(account=account).select_related(
+        'sale', 'grn', 'expense', 'recorded_by'
+    )
+    if from_date:
+        txns = txns.filter(date__gte=from_date)
+    if to_date:
+        txns = txns.filter(date__lte=to_date)
+
+    # Build running balance
+    # Opening balance + all credits - all debits BEFORE from_date
+    from django.db.models import Sum, Q
+    from django.db.models.functions import Coalesce
+    from django.db.models import DecimalField
+
+    all_txns_before = BankTransaction.objects.filter(account=account)
+    if from_date:
+        all_txns_before = all_txns_before.filter(date__lt=from_date)
+    credits_before = all_txns_before.filter(txn_type='credit').aggregate(
+        t=Coalesce(Sum('amount'), 0, output_field=DecimalField()))['t']
+    debits_before  = all_txns_before.filter(txn_type='debit').aggregate(
+        t=Coalesce(Sum('amount'), 0, output_field=DecimalField()))['t']
+    opening = account.opening_balance + credits_before - debits_before
+
+    # Build ledger with running balance
+    ledger = []
+    balance = opening
+    for txn in txns.order_by('date', 'created_at'):
+        if txn.txn_type == 'credit':
+            balance += txn.amount
+        else:
+            balance -= txn.amount
+        ledger.append({
+            'txn':     txn,
+            'credit':  txn.amount if txn.txn_type == 'credit' else None,
+            'debit':   txn.amount if txn.txn_type == 'debit'  else None,
+            'balance': balance,
+        })
+
+    # Totals
+    total_credit = sum(r['credit'] for r in ledger if r['credit'])
+    total_debit  = sum(r['debit']  for r in ledger if r['debit'])
+    closing      = opening + total_credit - total_debit
+
+    return render(request, 'godown/bank_statement.html', ctx(request, {
+        'active':       'bank',
+        'account':      account,
+        'ledger':       ledger,
+        'opening':      opening,
+        'closing':      closing,
+        'total_credit': total_credit,
+        'total_debit':  total_debit,
+        'from_date':    from_date or '',
+        'to_date':      to_date   or '',
+    }))
+
+
+@login_req
+def add_bank_transaction(request, pk):
+    godown  = get_godown(request)
+    account = get_object_or_404(BankAccount, pk=pk, godown=godown)
+    if request.method == 'POST':
+        errors = []
+        amt_raw = request.POST.get('amount','').strip()
+        try:    amount = Decimal(amt_raw)
+        except: amount = Decimal('0')
+        if amount <= 0: errors.append('Amount must be greater than 0.')
+        if not request.POST.get('date'): errors.append('Date is required.')
+        if not request.POST.get('txn_type'): errors.append('Select Credit or Debit.')
+        if not request.POST.get('description','').strip(): errors.append('Description is required.')
+        if errors:
+            for e in errors: messages.error(request, e)
+        else:
+            BankTransaction.objects.create(
+                account=account,
+                date=request.POST['date'],
+                txn_type=request.POST['txn_type'],
+                category=request.POST.get('category','other'),
+                amount=amount,
+                description=request.POST.get('description',''),
+                reference=request.POST.get('reference',''),
+                recorded_by=request.user,
+            )
+            messages.success(request, 'Transaction recorded.')
+            return redirect('bank_statement', pk=pk)
+    return render(request, 'godown/add_bank_transaction.html', ctx(request, {
+        'active': 'bank', 'account': account,
+    }))

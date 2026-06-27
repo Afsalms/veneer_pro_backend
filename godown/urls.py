@@ -43,15 +43,17 @@ urlpatterns = [
     path('purchase-orders/<int:pk>/advance/', views.po_advance, name='po_advance'),
 
     # Stock In
-    path('stock-in/',      views.stock_in_list, name='stock_in_list'),
-    path('stock-in/add/',  views.add_stock_in,  name='add_stock_in'),
-    path('stock-in/<int:pk>/', views.grn_detail,   name='grn_detail'),
+    path('stock-in/',          views.stock_in_list, name='stock_in_list'),
+    path('stock-in/add/',      views.add_stock_in,  name='add_stock_in'),
+    path('stock-in/<int:pk>/', views.grn_detail,    name='grn_detail'),
+    path('stock-in/<int:pk>/edit/', views.edit_grn, name='edit_grn'),
 
     # Sales
     path('sales/',                        views.sales_list,   name='sales_list'),
     path('sales/add/',                    views.add_sale,     name='add_sale'),
-    path('sales/<int:pk>/',               views.sale_detail,  name='sale_detail'),
-    path('sales/<int:pk>/invoice/',          views.invoice_view,       name='invoice'),
+    path('sales/<int:pk>/',               views.sale_detail,         name='sale_detail'),
+    path('sales/<int:pk>/edit/',          views.edit_sale,           name='edit_sale'),
+    path('sales/<int:pk>/invoice/',       views.invoice_view,        name='invoice'),
     path('sales/<int:pk>/einvoice-json/',    views.einvoice_json,      name='einvoice_json'),
     path('sales/export-einvoice/',           views.export_einvoice_csv, name='export_einvoice_csv'),
     path('sales/<int:pk>/payment/',       views.record_sale_payment, name='record_sale_payment'),
@@ -107,6 +109,13 @@ urlpatterns = [
     path('settings/lookups/<int:pk>/edit/', views.lookup_edit,  name='lookup_edit'),
     path('settings/lookups/<int:pk>/toggle/', views.lookup_toggle, name='lookup_toggle'),
     path('settings/lookups/<int:pk>/delete/', views.lookup_delete, name='lookup_delete'),
+
+    # Bank Accounts & Statement
+    path('bank/',                              views.bank_accounts,       name='bank_accounts'),
+    path('bank/add/',                          views.add_bank_account,    name='add_bank_account'),
+    path('bank/<int:pk>/edit/',               views.edit_bank_account,   name='edit_bank_account'),
+    path('bank/<int:pk>/statement/',          views.bank_statement,      name='bank_statement'),
+    path('bank/<int:pk>/add-transaction/',    views.add_bank_transaction, name='add_bank_transaction'),
 
     # Lookup values API for dynamic forms
     path('api/lookups/<str:category>/',    views.lookup_api,    name='lookup_api'),

@@ -6,6 +6,7 @@
   <a class="fp-back" href="{% url 'stock_in_list' %}"><i class="bi bi-arrow-left"></i></a>
   <span class="fp-title">{{ grn.grn_number }}</span>
   <div style="display:flex;gap:8px;margin-left:auto;">
+    <a class="bs" href="{% url 'edit_grn' grn.pk %}"><i class="bi bi-pencil"></i> Edit</a>
     <a class="bs" href="{% url 'payables' %}"><i class="bi bi-wallet2"></i> Payables</a>
     <a class="bs" href="{% url 'add_damage_grn' grn.pk %}" style="color:#b33a36;border-color:#f5c6cb;"><i class="bi bi-exclamation-triangle"></i> Record Damage</a>
   </div>

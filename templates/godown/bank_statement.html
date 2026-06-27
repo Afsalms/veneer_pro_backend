@@ -1,0 +1,134 @@
+{% extends "godown/base.html" %}
+{% block title %}Statement — {{ account.account_name }}{% endblock %}
+{% block page_title %}Bank Statement{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'bank_accounts' %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">{{ account.account_name }}</span>
+  <div style="display:flex;gap:8px;margin-left:auto;">
+    <a class="bs" href="{% url 'add_bank_transaction' account.pk %}"><i class="bi bi-plus"></i> Add Entry</a>
+    <a class="bs" href="{% url 'edit_bank_account' account.pk %}"><i class="bi bi-pencil"></i> Edit</a>
+    <button class="bs" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
+  </div>
+</div>
+
+<!-- Account summary card -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;">
+    <div style="background:var(--body-bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
+      <div style="font-size:10px;font-weight:600;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;">Account</div>
+      <div style="font-size:14px;font-weight:600;color:var(--ts);margin-top:3px;">{{ account.account_name }}</div>
+      <div style="font-size:11px;color:var(--tm);">{{ account.bank_name }}</div>
+    </div>
+    <div style="background:var(--body-bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;">
+      <div style="font-size:10px;font-weight:600;color:var(--tm);text-transform:uppercase;letter-spacing:.06em;">Opening Balance</div>
+      <div style="font-size:16px;font-weight:700;font-family:'Fraunces',serif;color:var(--ts);margin-top:3px;">₹{{ opening|floatformat:2 }}</div>
+    </div>
+    <div style="background:#eaf5e8;border:1px solid #c3e6cb;border-radius:8px;padding:12px 14px;">
+      <div style="font-size:10px;font-weight:600;color:#2d6a27;text-transform:uppercase;letter-spacing:.06em;">Total Credits</div>
+      <div style="font-size:16px;font-weight:700;font-family:'Fraunces',serif;color:#2d6a27;margin-top:3px;">+₹{{ total_credit|floatformat:2 }}</div>
+    </div>
+    <div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:12px 14px;">
+      <div style="font-size:10px;font-weight:600;color:#b33a36;text-transform:uppercase;letter-spacing:.06em;">Total Debits</div>
+      <div style="font-size:16px;font-weight:700;font-family:'Fraunces',serif;color:#b33a36;margin-top:3px;">−₹{{ total_debit|floatformat:2 }}</div>
+    </div>
+    <div style="background:var(--wood-50);border:2px solid var(--wood-400);border-radius:8px;padding:12px 14px;">
+      <div style="font-size:10px;font-weight:600;color:var(--ts);text-transform:uppercase;letter-spacing:.06em;">Closing Balance</div>
+      <div style="font-size:20px;font-weight:800;font-family:'Fraunces',serif;color:{% if closing >= 0 %}var(--wood-800){% else %}#b33a36{% endif %};margin-top:3px;">
+        {% if closing < 0 %}−{% endif %}₹{{ closing|floatformat:2 }}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Date filter -->
+<form method="get" class="cv" style="margin-bottom:14px;">
+  <div class="frow" style="align-items:flex-end;">
+    <div class="fthird"><label class="fl">From Date</label><input class="fc" name="from" type="date" value="{{ from_date }}"></div>
+    <div class="fthird"><label class="fl">To Date</label><input class="fc" name="to" type="date" value="{{ to_date }}"></div>
+    <div class="fthird" style="display:flex;gap:8px;">
+      <button class="bw" type="submit" style="flex:1;">Filter</button>
+      <a class="bs" href="{% url 'bank_statement' account.pk %}" style="padding:10px 14px;">Clear</a>
+    </div>
+  </div>
+</form>
+
+<!-- Transactions table -->
+<div class="cv" style="padding:0;overflow:hidden;">
+  <table class="dt hide-mobile" style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead>
+      <tr style="background:var(--wood-50);">
+        <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);">Date</th>
+        <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);">Description</th>
+        <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);">Category</th>
+        <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);">Reference</th>
+        <th style="padding:10px 14px;text-align:right;border-bottom:1px solid var(--border);color:#2d6a27;">Credit ↑</th>
+        <th style="padding:10px 14px;text-align:right;border-bottom:1px solid var(--border);color:#b33a36;">Debit ↓</th>
+        <th style="padding:10px 14px;text-align:right;border-bottom:1px solid var(--border);">Balance</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Opening balance row -->
+      <tr style="background:var(--body-bg);border-bottom:1px solid var(--border);">
+        <td colspan="6" style="padding:8px 14px;color:var(--tm);font-style:italic;">Opening Balance</td>
+        <td style="padding:8px 14px;text-align:right;font-weight:600;">₹{{ opening|floatformat:2 }}</td>
+      </tr>
+      {% for row in ledger %}
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:9px 14px;color:var(--tm);white-space:nowrap;">{{ row.txn.date }}</td>
+        <td style="padding:9px 14px;">
+          <div style="font-weight:500;">{{ row.txn.description }}</div>
+          {% if row.txn.sale %}<a href="{% url 'sale_detail' row.txn.sale.pk %}" style="font-size:11px;color:var(--wood-600);">{{ row.txn.sale.bill_number }}</a>{% endif %}
+          {% if row.txn.grn %}<a href="{% url 'grn_detail' row.txn.grn.pk %}" style="font-size:11px;color:var(--wood-600);">{{ row.txn.grn.grn_number }}</a>{% endif %}
+          {% if row.txn.expense %}<span style="font-size:11px;color:var(--tm);">Expense</span>{% endif %}
+        </td>
+        <td style="padding:9px 14px;"><span class="chip">{{ row.txn.get_category_display }}</span></td>
+        <td style="padding:9px 14px;color:var(--tm);font-family:monospace;font-size:12px;">{{ row.txn.reference }}</td>
+        <td style="padding:9px 14px;text-align:right;color:#2d6a27;font-weight:600;">
+          {% if row.credit %}+₹{{ row.credit|floatformat:2 }}{% endif %}
+        </td>
+        <td style="padding:9px 14px;text-align:right;color:#b33a36;font-weight:600;">
+          {% if row.debit %}−₹{{ row.debit|floatformat:2 }}{% endif %}
+        </td>
+        <td style="padding:9px 14px;text-align:right;font-weight:700;{% if row.balance < 0 %}color:#b33a36;{% endif %}">
+          ₹{{ row.balance|floatformat:2 }}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7" style="padding:40px;text-align:center;color:var(--tm);">No transactions in this period.</td></tr>
+      {% endfor %}
+      <!-- Closing row -->
+      {% if ledger %}
+      <tr style="background:var(--wood-50);font-weight:700;">
+        <td colspan="4" style="padding:10px 14px;">Closing Balance</td>
+        <td style="padding:10px 14px;text-align:right;color:#2d6a27;">+₹{{ total_credit|floatformat:2 }}</td>
+        <td style="padding:10px 14px;text-align:right;color:#b33a36;">−₹{{ total_debit|floatformat:2 }}</td>
+        <td style="padding:10px 14px;text-align:right;font-size:15px;{% if closing < 0 %}color:#b33a36;{% else %}color:var(--wood-800);{% endif %}">₹{{ closing|floatformat:2 }}</td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <!-- Mobile cards -->
+  <div class="show-mobile" style="padding:12px;">
+    {% for row in ledger %}
+    <div class="mc" style="margin-bottom:10px;">
+      <div class="mct">
+        <div>
+          <div class="mcn">{{ row.txn.description }}</div>
+          <div class="mcs">{{ row.txn.date }} · {{ row.txn.get_category_display }}</div>
+        </div>
+        <span style="font-size:15px;font-weight:700;color:{% if row.credit %}#2d6a27{% else %}#b33a36{% endif %};">
+          {% if row.credit %}+{% else %}−{% endif %}₹{% if row.credit %}{{ row.credit|floatformat:2 }}{% else %}{{ row.debit|floatformat:2 }}{% endif %}
+        </span>
+      </div>
+      <div class="mr"><span class="mrk">Balance</span><span class="mrv" style="font-weight:700;">₹{{ row.balance|floatformat:2 }}</span></div>
+      {% if row.txn.reference %}<div class="mr"><span class="mrk">Ref</span><span class="mrv" style="font-family:monospace;">{{ row.txn.reference }}</span></div>{% endif %}
+    </div>
+    {% empty %}
+    <div style="text-align:center;padding:30px;color:var(--tm);">No transactions in this period.</div>
+    {% endfor %}
+  </div>
+</div>
+
+{% endblock %}

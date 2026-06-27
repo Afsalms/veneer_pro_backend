@@ -2,6 +2,13 @@
 {% block title %}{% if expense %}Edit{% else %}Add{% endif %} Expense{% endblock %}
 {% block extra_js %}
 <script>
+function onExpModeChange() {
+  const mode = document.getElementById('exp-pay-mode').value;
+  const row  = document.getElementById('bank-account-row');
+  if (row) row.style.display = mode !== 'cash' ? '' : 'none';
+}
+document.addEventListener('DOMContentLoaded', onExpModeChange);
+
 document.getElementById('exp-form').querySelector('[type="submit"]').addEventListener('click', function(e) {
   const form = document.getElementById('exp-form');
   const errors = [];
@@ -78,7 +85,7 @@ document.querySelectorAll('.fc').forEach(el => el.addEventListener('input', func
   <div class="frow">
     <div class="fhalf">
       <label class="fl">Payment Mode</label>
-      <select class="fc fsel" name="payment_mode">
+      <select class="fc fsel" name="payment_mode" id="exp-pay-mode" onchange="onExpModeChange()">
         {% for val, label in  payment_modes %}
         <option value="{{ val }}" {% if expense and expense.payment_mode == val %}selected{% endif %}>{{ label }}</option>
         {% empty %}
@@ -88,14 +95,31 @@ document.querySelectorAll('.fc').forEach(el => el.addEventListener('input', func
         <option value="cheque" {% if expense and expense.payment_mode == 'cheque' %}selected{% endif %}>Cheque</option>
         <option value="online" {% if expense and expense.payment_mode == 'online' %}selected{% endif %}>Online</option>
         {% endfor %}
-      </select>
-    </div>
+      </select>    </div>
     <div class="fhalf">
       <label class="fl">Status</label>
       <select class="fc fsel" name="status">
         <option value="paid"    {% if not expense or expense.status == 'paid'    %}selected{% endif %}>Paid</option>
         <option value="pending" {% if expense and expense.status == 'pending'    %}selected{% endif %}>Pending</option>
       </select>
+    </div>
+  </div>
+  <div class="frow" id="bank-account-row" style="{% if expense and expense.payment_mode == 'cash' %}display:none;{% endif %}">
+    <div class="ffull">
+      <label class="fl">Bank Account
+        <span style="font-weight:400;color:var(--tm);"> — select to auto-record in bank statement</span>
+      </label>
+      <select class="fc fsel" name="bank_account">
+        <option value="">— Don't link to bank account —</option>
+        {% for acc in bank_accounts %}
+        <option value="{{ acc.pk }}">{{ acc.account_name }}{% if acc.bank_name %} ({{ acc.bank_name }}){% endif %} — ₹{{ acc.current_balance|floatformat:0 }}</option>
+        {% endfor %}
+      </select>
+      {% if not bank_accounts %}
+      <div style="font-size:11px;color:var(--tm);margin-top:4px;">
+        <a href="{% url 'add_bank_account' %}" style="color:var(--wood-600);">+ Add a bank account</a> to link expenses to your bank statement.
+      </div>
+      {% endif %}
     </div>
   </div>
   <div class="frow">

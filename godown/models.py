@@ -628,6 +628,7 @@ class Sale(models.Model):
     ship_addr1       = models.CharField(max_length=100, blank=True)
     ship_pincode     = models.CharField(max_length=6, blank=True)
     ship_state       = models.CharField(max_length=2, blank=True)
+    notes            = models.TextField(blank=True)
 
     class Meta:
         unique_together = ('godown', 'bill_number')
@@ -912,3 +913,83 @@ class LookupValue(models.Model):
             return default.value
         first = qs.first()
         return first.value if first else ''
+
+
+# ── Bank Accounts & Statement ──────────────────────────────────────
+class BankAccount(models.Model):
+    ACCOUNT_TYPE_CHOICES = [
+        ('savings',  'Savings Account'),
+        ('current',  'Current Account'),
+        ('cc',       'Cash Credit'),
+        ('od',       'Overdraft'),
+        ('wallet',   'Digital Wallet / UPI'),
+    ]
+    godown       = models.ForeignKey(Godown, on_delete=models.CASCADE, related_name='bank_accounts')
+    account_name = models.CharField(max_length=100, help_text='e.g. SBI Current A/c, HDFC Savings')
+    bank_name    = models.CharField(max_length=100, blank=True)
+    account_no   = models.CharField(max_length=30, blank=True)
+    ifsc         = models.CharField(max_length=15, blank=True)
+    upi_id       = models.CharField(max_length=100, blank=True)
+    account_type = models.CharField(max_length=10, choices=ACCOUNT_TYPE_CHOICES, default='current')
+    opening_balance = models.DecimalField(max_digits=14, decimal_places=2, default=0,
+                          help_text='Opening balance when account was added to system')
+    is_active    = models.BooleanField(default=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['account_name']
+
+    def __str__(self):
+        return f"{self.account_name} ({self.bank_name})" if self.bank_name else self.account_name
+
+    @property
+    def current_balance(self):
+        from django.db.models import Sum
+        from django.db.models.functions import Coalesce
+        from django.db.models import DecimalField
+        credits = BankTransaction.objects.filter(
+            account=self, txn_type='credit'
+        ).aggregate(t=Coalesce(Sum('amount'), 0, output_field=DecimalField()))['t']
+        debits  = BankTransaction.objects.filter(
+            account=self, txn_type='debit'
+        ).aggregate(t=Coalesce(Sum('amount'), 0, output_field=DecimalField()))['t']
+        return self.opening_balance + credits - debits
+
+
+class BankTransaction(models.Model):
+    TXN_TYPE_CHOICES = [('credit', 'Credit (Money In)'), ('debit', 'Debit (Money Out)')]
+    TXN_CATEGORY_CHOICES = [
+        ('sale_receipt',    'Sale Receipt'),
+        ('supplier_payment','Supplier Payment'),
+        ('expense',         'Expense'),
+        ('advance_paid',    'Advance Paid'),
+        ('advance_received','Advance Received'),
+        ('transfer_in',     'Transfer In'),
+        ('transfer_out',    'Transfer Out'),
+        ('opening',         'Opening Balance'),
+        ('other',           'Other'),
+    ]
+    account     = models.ForeignKey(BankAccount, on_delete=models.CASCADE, related_name='transactions')
+    date        = models.DateField()
+    txn_type    = models.CharField(max_length=10, choices=TXN_TYPE_CHOICES)
+    category    = models.CharField(max_length=20, choices=TXN_CATEGORY_CHOICES, default='other')
+    amount      = models.DecimalField(max_digits=14, decimal_places=2)
+    description = models.CharField(max_length=300, blank=True)
+    reference   = models.CharField(max_length=100, blank=True,
+                      help_text='UTR / cheque number / reference')
+    # Links to source documents
+    sale        = models.ForeignKey('Sale', on_delete=models.SET_NULL,
+                      null=True, blank=True, related_name='bank_txns')
+    grn         = models.ForeignKey('StockIn', on_delete=models.SET_NULL,
+                      null=True, blank=True, related_name='bank_txns')
+    expense     = models.ForeignKey('Expense', on_delete=models.SET_NULL,
+                      null=True, blank=True, related_name='bank_txns')
+    recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        sign = '+' if self.txn_type == 'credit' else '-'
+        return f"{sign}₹{self.amount} on {self.date} — {self.description}"

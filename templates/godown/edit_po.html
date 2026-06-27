@@ -1,5 +1,5 @@
 {% extends "godown/base.html" %}
-{% block title %}Edit PO — {{ po.po_number }}{% endblock %}
+{% block title %}Edit {{ po.po_number }}{% endblock %}
 {% block page_title %}Edit Purchase Order{% endblock %}
 {% block content %}
 <div class="fp-header">
@@ -9,24 +9,46 @@
 
 {% if po.grns.exists %}
 <div style="background:#fef6e4;border:1px solid #fde8a0;border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#a06a10;">
-  <i class="bi bi-exclamation-circle"></i> <strong>GRN already recorded.</strong>
-  Line items cannot be changed once goods are received. You can update supplier, date and notes.
+  <i class="bi bi-exclamation-circle"></i> <strong>GRN already recorded against this PO.</strong>
+  Quantities that have already been received cannot be reduced below what was received.
+  Other fields can be freely edited.
+</div>
+{% endif %}
+
+{% if form_errors %}
+<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:12px 16px;margin-bottom:14px;color:#b33a36;font-size:13px;">
+  <strong><i class="bi bi-exclamation-triangle"></i> Please fix:</strong>
+  <ul style="margin:6px 0 0 18px;padding:0;">{% for e in form_errors %}<li>{{ e }}</li>{% endfor %}</ul>
 </div>
 {% endif %}
 
 <form method="post" id="edit-po-form">{% csrf_token %}
+
+<!-- PO Details -->
 <div class="cv" style="margin-bottom:14px;">
   <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">PO Details</div>
   <div class="frow">
     <div class="fhalf">
-      <label class="fl">Supplier *</label>
-      <select class="fc fsel" name="supplier" required>
-        {% for s in suppliers %}<option value="{{ s.pk }}" {% if s.pk == po.supplier.pk %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
-      </select>
+      <label class="fl">PO Number</label>
+      <input class="fc" value="{{ po.po_number }}" readonly style="background:#f0ebe3;font-family:monospace;font-weight:600;">
     </div>
     <div class="fhalf">
       <label class="fl">Date *</label>
       <input class="fc" name="date" type="date" required value="{{ po.date|date:'Y-m-d' }}">
+    </div>
+  </div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Supplier *</label>
+      <select class="fc fsel" name="supplier" required>
+        {% for s in suppliers %}
+        <option value="{{ s.pk }}" {% if s.pk == po.supplier.pk %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="fhalf">
+      <label class="fl">Expected Arrival</label>
+      <input class="fc" name="expected_arrival" type="date" value="{{ po.expected_arrival|date:'Y-m-d'|default:'' }}">
     </div>
   </div>
   <div class="frow">
@@ -39,40 +61,299 @@
     </div>
     <div class="fhalf">
       <label class="fl">Notes</label>
-      <input class="fc" name="notes" value="{{ po.notes }}">
+      <input class="fc" name="notes" value="{{ po.notes|default:'' }}">
     </div>
   </div>
 </div>
 
-{% if not po.grns.exists %}
+<!-- Line Items -->
 <div class="cv" style="margin-bottom:14px;">
-  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">Items Ordered</div>
-  {% for item in po.po_items.all %}
-  <div style="padding:10px 0;border-bottom:1px solid var(--border);">
-    <div style="font-weight:600;font-size:13px;">{{ item.product.display_name }}</div>
-    <div style="font-size:12px;color:var(--tm);margin-top:4px;">
-      {{ item.qty_display }} @ ₹{{ item.rate_per_sqm }}/sq.m
-      — <strong>₹{{ item.amount|floatformat:0 }}</strong>
-    </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <span style="font-size:13px;font-weight:600;color:var(--ts);">Items Ordered</span>
+    <button type="button" class="add-item-btn" onclick="addPOItem()"><i class="bi bi-plus"></i> Add Item</button>
   </div>
-  <!-- Pass existing items through as hidden fields so _save_po_items can repopulate -->
-  <input type="hidden" name="product[]" value="{{ item.product.pk }}">
-  <input type="hidden" name="qty_sqm[]" value="{{ item.qty_sqm }}">
-  <input type="hidden" name="rate_per_sqm[]" value="{{ item.rate_per_sqm }}">
-  <input type="hidden" name="qty_unit[]" value="{{ item.qty_unit }}">
-  <input type="hidden" name="pieces[]" value="{{ item.pieces|default:'' }}">
-  <input type="hidden" name="sheet_length[]" value="{{ item.sheet_length|default:'' }}">
-  <input type="hidden" name="sheet_width[]" value="{{ item.sheet_width|default:'' }}">
-  {% endfor %}
-  <div style="padding-top:10px;font-size:12px;color:var(--tm);">
-    To change line items, delete this PO and create a new one.
+  <div id="po-items">
+    {% for item in po.po_items.all %}
+    <div class="line-item" style="margin-bottom:12px;align-items:flex-start;">
+      <div class="li-num" style="margin-top:30px;">{{ forloop.counter }}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="frow">
+          <div class="fhalf">
+            <label class="fl">Product *</label>
+            <select class="fc fsel" name="product[]" onchange="onPOProductChange(this)">
+              {% for p in products %}
+              <option value="{{ p.pk }}" {% if p.pk == item.product.pk %}selected{% endif %}
+                      data-sheet-sqm="{{ p.effective_sheet_sqm }}"
+                      data-sheet-length="{{ p.sheet_length }}"
+                      data-sheet-width="{{ p.sheet_width }}">
+                {{ p.display_name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fhalf">
+            <label class="fl">Unit</label>
+            <select class="fc fsel" name="qty_unit[]" onchange="onPOUnitChange(this)">
+              <option value="sqm" {% if item.qty_unit == 'sqm' or item.qty_unit == 'sqft' %}selected{% endif %}>Square Metres (sq.m)</option>
+              <option value="pcs" {% if item.qty_unit == 'pcs' %}selected{% endif %}>Pieces (nos)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- SQM section -->
+        <div class="po-sqm-section frow" {% if item.qty_unit == 'pcs' %}style="display:none;"{% endif %}>
+          <div class="fthird">
+            <label class="fl">Qty (sq.m) *</label>
+            <input class="fc po-sqm-input" name="qty_sqm[]" type="number" step="0.0001"
+                   value="{{ item.qty_sqm }}" oninput="calcPOLine(this.closest('.line-item'))">
+          </div>
+          <div class="fthird">
+            <label class="fl">Rate (₹/sq.m) *</label>
+            <input class="fc po-rate" name="rate_per_sqm[]" type="number" step="0.01"
+                   value="{{ item.rate_per_sqm }}" oninput="calcPOLine(this.closest('.line-item'))">
+          </div>
+          <div class="fthird">
+            <label class="fl">Amount (₹)</label>
+            <input class="fc li-amt" readonly style="background:#f0ebe3;font-weight:600;">
+          </div>
+        </div>
+
+        <!-- Pieces section -->
+        <div class="po-pcs-section" {% if item.qty_unit != 'pcs' %}style="display:none;"{% endif %}>
+          <div class="frow">
+            <div class="fthird">
+              <label class="fl">Pieces *</label>
+              <input class="fc po-pcs" name="pieces[]" type="number" step="1"
+                     value="{{ item.pieces|default:'' }}" oninput="calcPOPieces(this.closest('.line-item'))">
+            </div>
+            <div class="fthird">
+              <label class="fl">Length (ft)</label>
+              <input class="fc" name="sheet_length[]" type="number" step="0.01"
+                     value="{{ item.sheet_length|default:item.product.sheet_length }}"
+                     readonly style="background:#f0ebe3;" oninput="calcPOPieces(this.closest('.line-item'))">
+            </div>
+            <div class="fthird">
+              <label class="fl">Width (ft)</label>
+              <input class="fc" name="sheet_width[]" type="number" step="0.01"
+                     value="{{ item.sheet_width|default:item.product.sheet_width }}"
+                     readonly style="background:#f0ebe3;" oninput="calcPOPieces(this.closest('.line-item'))">
+            </div>
+          </div>
+          <div class="frow">
+            <div class="fthird">
+              <label class="fl">= Calculated sq.m</label>
+              <div class="fc qty-calc" style="background:#f0ebe3;display:flex;align-items:center;min-height:42px;font-size:13px;padding:10px 12px;color:var(--tm);">—</div>
+              <input type="hidden" name="qty_sqm[]" class="po-pcs-qty" value="{{ item.qty_sqm }}">
+            </div>
+            <div class="fthird">
+              <label class="fl">Rate (₹/sq.m) *</label>
+              <input class="fc po-rate" name="rate_per_sqm[]" type="number" step="0.01"
+                     value="{{ item.rate_per_sqm }}" oninput="calcPOLine(this.closest('.line-item'))">
+            </div>
+            <div class="fthird">
+              <label class="fl">Amount (₹)</label>
+              <input class="fc li-amt" readonly style="background:#f0ebe3;font-weight:600;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Received info (if GRN exists) -->
+        {% if po.grns.exists %}
+        <div style="font-size:11px;color:var(--tm);margin-top:4px;padding:6px 10px;background:var(--body-bg);border-radius:6px;">
+          <i class="bi bi-info-circle"></i>
+          Received so far: <strong>{{ item.qty_received|floatformat:4 }} sq.m</strong>
+          — cannot reduce below this.
+        </div>
+        {% endif %}
+      </div>
+      <button type="button" class="li-del" onclick="removePOItem(this)" style="margin-top:28px;flex-shrink:0;">
+        <i class="bi bi-trash3"></i>
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+    <span style="font-size:13px;color:var(--tm);">Total PO Value</span>
+    <span style="font-size:20px;font-weight:700;font-family:'Fraunces',serif;" id="po-total">₹0</span>
   </div>
 </div>
-{% endif %}
 
 <div class="fp-actions">
   <a class="bs" href="{% url 'po_detail' po.pk %}">Cancel</a>
   <button class="bw" type="submit"><i class="bi bi-check2"></i> Update PO</button>
 </div>
 </form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const PRODUCTS_PO = {
+  {% for p in products %}
+  {{ p.pk }}: {
+    id: {{ p.pk }},
+    name: "{{ p.display_name }}",
+    sheet_sqm: {{ p.effective_sheet_sqm|floatformat:4 }},
+    sheet_length: {{ p.sheet_length }},
+    sheet_width: {{ p.sheet_width }},
+  },
+  {% endfor %}
+};
+
+function calcPOLine(li) {
+  let qty = 0;
+  const sqmInp = li.querySelector('.po-sqm-input');
+  const pcsQty = li.querySelector('.po-pcs-qty');
+  const sqmSec = li.querySelector('.po-sqm-section');
+  if (sqmSec && sqmSec.style.display !== 'none') {
+    qty = parseFloat(sqmInp?.value) || 0;
+  } else {
+    qty = parseFloat(pcsQty?.value) || 0;
+  }
+  const rate = parseFloat(li.querySelector('.po-rate')?.value) || 0;
+  const amt  = qty * rate;
+  const el   = li.querySelector('.li-amt');
+  if (el) el.value = amt > 0 ? amt.toLocaleString('en-IN', {maximumFractionDigits:2}) : '';
+  calcPOTotal();
+}
+
+function calcPOPieces(li) {
+  const pcs = parseFloat(li.querySelector('.po-pcs')?.value) || 0;
+  const pid  = li.querySelector('[name="product[]"]')?.value;
+  const prod = PRODUCTS_PO[pid];
+  if (!prod || !pcs) return;
+  const sheetSqm = prod.sheet_sqm;
+  const qtySqm   = pcs * sheetSqm;
+  const pcsQtyEl  = li.querySelector('.po-pcs-qty');
+  const calcEl    = li.querySelector('.qty-calc');
+  if (pcsQtyEl) pcsQtyEl.value = qtySqm.toFixed(4);
+  if (calcEl) {
+    calcEl.textContent = `${pcs} × ${sheetSqm.toFixed(4)} = ${qtySqm.toFixed(4)} sq.m`;
+    calcEl.style.color = 'var(--wood-600)';
+  }
+  calcPOLine(li);
+}
+
+function calcPOTotal() {
+  let total = 0;
+  document.querySelectorAll('#po-items .li-amt').forEach(a => {
+    total += parseFloat((a.value || '0').replace(/,/g,'')) || 0;
+  });
+  document.getElementById('po-total').textContent = '₹' + total.toLocaleString('en-IN', {maximumFractionDigits:0});
+}
+
+function onPOUnitChange(sel) {
+  const li   = sel.closest('.line-item');
+  const unit = sel.value;
+  li.querySelector('.po-sqm-section').style.display = unit === 'sqm' ? '' : 'none';
+  li.querySelector('.po-pcs-section').style.display = unit === 'pcs' ? '' : 'none';
+  if (unit === 'pcs') calcPOPieces(li);
+  else calcPOLine(li);
+}
+
+function onPOProductChange(sel) {
+  const li  = sel.closest('.line-item');
+  const pid = sel.value;
+  const prod = PRODUCTS_PO[pid];
+  if (!prod) return;
+  const lenEl = li.querySelector('[name="sheet_length[]"]');
+  const widEl = li.querySelector('[name="sheet_width[]"]');
+  if (lenEl) lenEl.value = prod.sheet_length;
+  if (widEl) widEl.value = prod.sheet_width;
+  const unit = li.querySelector('[name="qty_unit[]"]')?.value;
+  if (unit === 'pcs') calcPOPieces(li);
+}
+
+let poItemCount = {{ po.po_items.count }};
+
+function addPOItem() {
+  poItemCount++;
+  const opts = Object.values(PRODUCTS_PO).map(p =>
+    `<option value="${p.id}" data-sheet-sqm="${p.sheet_sqm}" data-sheet-length="${p.sheet_length}" data-sheet-width="${p.sheet_width}">${p.name}</option>`
+  ).join('');
+  const html = `
+  <div class="line-item" style="margin-bottom:12px;align-items:flex-start;">
+    <div class="li-num" style="margin-top:30px;">${poItemCount}</div>
+    <div style="flex:1;min-width:0;">
+      <div class="frow">
+        <div class="fhalf">
+          <label class="fl">Product *</label>
+          <select class="fc fsel" name="product[]" onchange="onPOProductChange(this)">
+            <option value="">Select product</option>${opts}
+          </select>
+        </div>
+        <div class="fhalf">
+          <label class="fl">Unit</label>
+          <select class="fc fsel" name="qty_unit[]" onchange="onPOUnitChange(this)">
+            <option value="sqm">Square Metres (sq.m)</option>
+            <option value="pcs">Pieces (nos)</option>
+          </select>
+        </div>
+      </div>
+      <div class="po-sqm-section frow">
+        <div class="fthird"><label class="fl">Qty (sq.m) *</label>
+          <input class="fc po-sqm-input" name="qty_sqm[]" type="number" step="0.0001" placeholder="0.0000"
+                 oninput="calcPOLine(this.closest('.line-item'))"></div>
+        <div class="fthird"><label class="fl">Rate (₹/sq.m) *</label>
+          <input class="fc po-rate" name="rate_per_sqm[]" type="number" step="0.01" placeholder="0.00"
+                 oninput="calcPOLine(this.closest('.line-item'))"></div>
+        <div class="fthird"><label class="fl">Amount (₹)</label>
+          <input class="fc li-amt" readonly style="background:#f0ebe3;font-weight:600;"></div>
+      </div>
+      <div class="po-pcs-section" style="display:none;">
+        <div class="frow">
+          <div class="fthird"><label class="fl">Pieces *</label>
+            <input class="fc po-pcs" name="pieces[]" type="number" step="1" placeholder="0"
+                   oninput="calcPOPieces(this.closest('.line-item'))"></div>
+          <div class="fthird"><label class="fl">Length (ft)</label>
+            <input class="fc" name="sheet_length[]" type="number" step="0.01"
+                   readonly style="background:#f0ebe3;" oninput="calcPOPieces(this.closest('.line-item'))"></div>
+          <div class="fthird"><label class="fl">Width (ft)</label>
+            <input class="fc" name="sheet_width[]" type="number" step="0.01"
+                   readonly style="background:#f0ebe3;" oninput="calcPOPieces(this.closest('.line-item'))"></div>
+        </div>
+        <div class="frow">
+          <div class="fthird"><label class="fl">= Calculated sq.m</label>
+            <div class="fc qty-calc" style="background:#f0ebe3;display:flex;align-items:center;min-height:42px;font-size:13px;padding:10px 12px;color:var(--tm);">—</div>
+            <input type="hidden" name="qty_sqm[]" class="po-pcs-qty" value=""></div>
+          <div class="fthird"><label class="fl">Rate (₹/sq.m) *</label>
+            <input class="fc po-rate" name="rate_per_sqm[]" type="number" step="0.01" placeholder="0.00"
+                   oninput="calcPOLine(this.closest('.line-item'))"></div>
+          <div class="fthird"><label class="fl">Amount (₹)</label>
+            <input class="fc li-amt" readonly style="background:#f0ebe3;font-weight:600;"></div>
+        </div>
+      </div>
+    </div>
+    <button type="button" class="li-del" onclick="removePOItem(this)" style="margin-top:28px;flex-shrink:0;">
+      <i class="bi bi-trash3"></i>
+    </button>
+  </div>`;
+  document.getElementById('po-items').insertAdjacentHTML('beforeend', html);
+  refreshDelBtns();
+}
+
+function removePOItem(btn) {
+  btn.closest('.line-item').remove();
+  document.querySelectorAll('#po-items .line-item').forEach((li, i) => {
+    const n = li.querySelector('.li-num');
+    if (n) n.textContent = i + 1;
+  });
+  refreshDelBtns();
+  calcPOTotal();
+}
+
+function refreshDelBtns() {
+  const items = document.querySelectorAll('#po-items .line-item');
+  items.forEach(li => {
+    const btn = li.querySelector('.li-del');
+    if (btn) btn.style.display = items.length > 1 ? 'flex' : 'none';
+  });
+}
+
+// Init on load
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#po-items .line-item').forEach(li => calcPOLine(li));
+  refreshDelBtns();
+});
+</script>
 {% endblock %}

@@ -71,7 +71,7 @@
     </div>
     <div class="fhalf">
       <label class="fl">Payment Mode</label>
-      <select class="fc fsel" name="mode">
+      <select class="fc fsel" name="payment_mode" id="pay-mode-grn" onchange="onPayModeChange()">
         <option value="bank">Bank Transfer / NEFT</option>
         <option value="upi">UPI</option>
         <option value="cash">Cash</option>
@@ -87,9 +87,32 @@
   <div id="balance-note" style="padding:8px 14px;border-radius:8px;font-size:12px;margin-bottom:8px;display:none;"></div>
 
   <div class="frow">
-    <div class="ffull">
+    <div class="fhalf">
+      <label class="fl">Date *</label>
+      <input class="fc" name="date" type="date" required value="{% now 'Y-m-d' %}">
+    </div>
+    <div class="fhalf">
       <label class="fl">Transaction Reference</label>
-      <input class="fc" name="reference" placeholder="UTR / Cheque number (optional)">
+      <input class="fc" name="reference" placeholder="UTR / Cheque number (optional)" style="font-family:monospace;">
+    </div>
+  </div>
+
+  <div class="frow" id="bank-account-row">
+    <div class="ffull">
+      <label class="fl">Bank Account
+        <span style="font-weight:400;color:var(--tm);"> — select to auto-record in bank statement</span>
+      </label>
+      <select class="fc fsel" name="bank_account">
+        <option value="">— Don't link to bank account —</option>
+        {% for acc in bank_accounts %}
+        <option value="{{ acc.pk }}">{{ acc.account_name }}{% if acc.bank_name %} ({{ acc.bank_name }}){% endif %} — Balance: ₹{{ acc.current_balance|floatformat:0 }}</option>
+        {% endfor %}
+      </select>
+      {% if not bank_accounts %}
+      <div style="font-size:11px;color:var(--tm);margin-top:4px;">
+        <a href="{% url 'add_bank_account' %}" style="color:var(--wood-600);">+ Add a bank account</a> to link payments to your bank statement.
+      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -104,6 +127,13 @@
 
 {% block extra_js %}
 <script>
+function onPayModeChange() {
+  const mode = document.getElementById('pay-mode-grn').value;
+  const row  = document.getElementById('bank-account-row');
+  row.style.display = mode !== 'cash' ? '' : 'none';
+}
+onPayModeChange();
+
 const grnBalance = {{ grn.balance|floatformat:4 }};
 
 function onRPCurrency() {

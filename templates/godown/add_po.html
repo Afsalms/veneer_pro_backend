@@ -8,18 +8,23 @@
 <div class="cv" style="margin-bottom:14px;">
   <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">PO Details</div>
   <div class="frow">
-    <div class="fhalf"><label class="fl">Supplier *</label>
-      <select class="fc fsel" name="supplier" id="po-supplier" required data-rule-required="true" data-msg-required="Please select a supplier">
-        <option value="">Select supplier</option>{% for s in suppliers %}<option value="{{ s.pk }}">{{ s.name }}</option>{% endfor %}
-      </select></div>
+    <div class="fhalf"><label class="fl">PO Number</label>
+      <input class="fc" name="po_number" value="{{ next_po_number }}" placeholder="{{ next_po_number }}"
+             style="font-family:monospace;font-weight:600;" title="Auto-generated. Edit if needed.">
+    </div>
     <div class="fhalf"><label class="fl">PO Date *</label>
       <input class="fc" name="date" type="date" required value="{% now 'Y-m-d' %}">
     </div>
   </div>
   <div class="frow">
+    <div class="fhalf"><label class="fl">Supplier *</label>
+      <select class="fc fsel" name="supplier" id="po-supplier" required data-rule-required="true" data-msg-required="Please select a supplier">
+        <option value="">Select supplier</option>{% for s in suppliers %}<option value="{{ s.pk }}">{{ s.name }}</option>{% endfor %}
+      </select></div>
     <div class="fhalf"><label class="fl">Expected Arrival Date</label><input class="fc" name="expected_arrival" type="date"></div>
-    <div class="fhalf"><label class="fl">Notes</label><input class="fc" name="notes" placeholder="Optional"></div>
   </div>
+  <div class="frow">
+    <div class="fhalf"><label class="fl">Notes</label><input class="fc" name="notes" placeholder="Optional"></div>
   <div class="frow">
     <div class="fhalf">
       <label class="fl">Payment Currency</label>

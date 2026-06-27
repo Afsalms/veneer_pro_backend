@@ -1,0 +1,57 @@
+{% extends "godown/base.html" %}
+{% block title %}Bank Accounts{% endblock %}
+{% block page_title %}Bank Accounts{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <span class="fp-title">Bank Accounts</span>
+  <a class="bw" href="{% url 'add_bank_account' %}" style="margin-left:auto;"><i class="bi bi-plus"></i> Add Account</a>
+</div>
+
+{% if not accounts %}
+<div class="cv" style="text-align:center;padding:40px;">
+  <div style="font-size:40px;margin-bottom:12px;">🏦</div>
+  <div style="font-size:15px;font-weight:600;color:var(--ts);margin-bottom:6px;">No bank accounts yet</div>
+  <div style="font-size:13px;color:var(--tm);margin-bottom:16px;">Add your bank accounts to track payments and generate statements.</div>
+  <a class="bw" href="{% url 'add_bank_account' %}"><i class="bi bi-plus"></i> Add First Account</a>
+</div>
+{% else %}
+{% for acc in accounts %}
+<div class="cv" style="margin-bottom:12px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div style="width:44px;height:44px;border-radius:10px;background:var(--wood-100);display:flex;align-items:center;justify-content:center;font-size:20px;">
+        {% if acc.account_type == 'wallet' %}📱{% else %}🏦{% endif %}
+      </div>
+      <div>
+        <div style="font-size:15px;font-weight:700;color:var(--ts);">{{ acc.account_name }}</div>
+        <div style="font-size:12px;color:var(--tm);margin-top:2px;">
+          {% if acc.bank_name %}{{ acc.bank_name }}{% endif %}
+          {% if acc.account_no %} · A/c {{ acc.account_no }}{% endif %}
+          {% if acc.ifsc %} · IFSC: {{ acc.ifsc }}{% endif %}
+          {% if acc.upi_id %} · UPI: {{ acc.upi_id }}{% endif %}
+        </div>
+        <div style="font-size:11px;color:var(--tm);margin-top:2px;">{{ acc.get_account_type_display }}</div>
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:11px;color:var(--tm);text-transform:uppercase;letter-spacing:.05em;">Current Balance</div>
+      <div style="font-size:22px;font-weight:800;font-family:'Fraunces',serif;color:{% if acc.current_balance >= 0 %}var(--wood-800){% else %}#b33a36{% endif %};">
+        {% if acc.current_balance < 0 %}−{% endif %}₹{{ acc.current_balance|floatformat:2 }}
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+    <a class="bw" href="{% url 'bank_statement' acc.pk %}" style="flex:1;text-align:center;">
+      <i class="bi bi-list-columns"></i> View Statement
+    </a>
+    <a class="bs" href="{% url 'add_bank_transaction' acc.pk %}">
+      <i class="bi bi-plus"></i> Add Entry
+    </a>
+    <a class="bs" href="{% url 'edit_bank_account' acc.pk %}">
+      <i class="bi bi-pencil"></i>
+    </a>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

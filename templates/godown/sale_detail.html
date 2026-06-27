@@ -6,6 +6,7 @@
   <a class="fp-back" href="{% url 'sales_list' %}"><i class="bi bi-arrow-left"></i></a>
   <span class="fp-title">{{ sale.bill_number }}</span>
   <div style="display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;">
+    <a class="bs" href="{% url 'edit_sale' sale.pk %}"><i class="bi bi-pencil"></i> Edit</a>
     <a class="bs" href="{% url 'invoice' sale.pk %}"><i class="bi bi-printer"></i> Invoice</a>
     {% if sale.sale_type == 'bill' %}
     <a class="bs" href="{% url 'einvoice_json' sale.pk %}?download=1" title="Download e-Invoice JSON for GSP"><i class="bi bi-download"></i> e-Invoice JSON</a>

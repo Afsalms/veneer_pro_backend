@@ -40,14 +40,21 @@
 
   <div class="frow">
     <div class="fhalf">
+      <label class="fl">GRN Number</label>
+      <input class="fc" name="grn_number" value="{{ next_grn_number }}" placeholder="{{ next_grn_number }}"
+             style="font-family:monospace;font-weight:600;" title="Auto-generated. Edit if needed.">
+    </div>
+    <div class="fhalf">
       <label class="fl">GRN Date *</label>
       <input class="fc" name="date" type="date" required value="{% now 'Y-m-d' %}">
     </div>
+  </div>
+
+  <div class="frow">
     <div class="fhalf">
       <label class="fl">Supplier Invoice No</label>
       <input class="fc" name="invoice_number" id="grn-invoice" placeholder="Bill / invoice number">
     </div>
-  </div>
 
   <div class="frow">
     <div class="fhalf">

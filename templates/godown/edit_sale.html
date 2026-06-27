@@ -1,0 +1,275 @@
+{% extends "godown/base.html" %}
+{% block title %}Edit {{ sale.bill_number }}{% endblock %}
+{% block page_title %}Edit Sale{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'sale_detail' sale.pk %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">Edit {{ sale.bill_number }}</span>
+</div>
+
+{% if sale.amount_received > 0 %}
+<div style="background:#fef6e4;border:1px solid #fde8a0;border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#a06a10;">
+  <i class="bi bi-exclamation-circle"></i>
+  <strong>₹{{ sale.amount_received|floatformat:0 }} already received.</strong>
+  Editing items will recalculate the grand total. The balance due will update accordingly.
+</div>
+{% endif %}
+
+{% if form_errors %}
+<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:12px 16px;margin-bottom:14px;color:#b33a36;font-size:13px;">
+  <strong><i class="bi bi-exclamation-triangle"></i> Please fix:</strong>
+  <ul style="margin:6px 0 0 18px;padding:0;">{% for e in form_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" id="edit-sale-form">{% csrf_token %}
+
+<!-- Bill Details -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">Bill Details</div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Bill Number</label>
+      <input class="fc" value="{{ sale.bill_number }}" readonly
+             style="background:#f0ebe3;font-family:monospace;font-weight:600;">
+    </div>
+    <div class="fhalf">
+      <label class="fl">Date *</label>
+      <input class="fc" name="date" type="date" required value="{{ sale.date|date:'Y-m-d' }}">
+    </div>
+  </div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Customer *</label>
+      <select class="fc fsel" name="customer" required>
+        {% for cu in customers %}
+        <option value="{{ cu.pk }}" {% if cu.pk == sale.customer_id %}selected{% endif %}>{{ cu.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="fhalf">
+      <label class="fl">Due Date</label>
+      <input class="fc" name="due_date" type="date" value="{{ sale.due_date|date:'Y-m-d'|default:'' }}">
+    </div>
+  </div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Customer PO No</label>
+      <input class="fc" name="po_reference" value="{{ sale.po_reference|default:'' }}" placeholder="Optional">
+    </div>
+    <div class="fhalf">
+      <label class="fl">Transport / Vehicle</label>
+      <input class="fc" name="transport" value="{{ sale.transport|default:'' }}" placeholder="Optional">
+    </div>
+  </div>
+  <div class="frow">
+    <div class="ffull">
+      <label class="fl">Notes</label>
+      <input class="fc" name="notes" value="{{ sale.notes|default:'' }}" placeholder="Optional">
+    </div>
+  </div>
+</div>
+
+<!-- Items Sold -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <span style="font-size:13px;font-weight:600;color:var(--ts);">Items Sold</span>
+    <button type="button" class="add-item-btn" onclick="addSaleItem()"><i class="bi bi-plus"></i> Add Item</button>
+  </div>
+  <div id="edit-sale-items">
+    {% for item in sale.items.all %}
+    <div class="line-item" style="margin-bottom:12px;align-items:flex-start;">
+      <div class="li-num" style="margin-top:30px;">{{ forloop.counter }}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="frow">
+          <div class="fhalf">
+            <label class="fl">Product *</label>
+            <select class="fc fsel" name="product[]" onchange="onSaleProductChange(this)">
+              {% for p in products %}
+              <option value="{{ p.pk }}" {% if p.pk == item.product.pk %}selected{% endif %}
+                      data-stock="{{ p.stock_qty|floatformat:4 }}"
+                      data-sale-rate="{{ p.sale_rate|floatformat:2 }}">
+                {{ p.display_name }} ({{ p.stock_qty|floatformat:2 }} sq.m available)
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fhalf">
+            <label class="fl">Size</label>
+            <input class="fc" name="size[]" value="{{ item.size|default:'' }}" placeholder="e.g. 8×4 ft">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fthird">
+            <label class="fl">Qty (sq.m) *</label>
+            <input class="fc sale-qty" name="qty_sqm[]" type="number" step="0.0001"
+                   value="{{ item.qty_sqm }}"
+                   oninput="calcSaleEditLine(this.closest('.line-item'))">
+          </div>
+          <div class="fthird">
+            <label class="fl">Rate (₹/sq.m) *</label>
+            <input class="fc sale-rate" name="rate_per_sqm[]" type="number" step="0.01"
+                   value="{{ item.rate_per_sqm }}"
+                   oninput="calcSaleEditLine(this.closest('.line-item'))">
+          </div>
+          <div class="fthird">
+            <label class="fl">Amount (₹)</label>
+            <input class="fc li-amt" readonly style="background:#f0ebe3;font-weight:600;">
+          </div>
+        </div>
+      </div>
+      <button type="button" class="li-del" onclick="removeSaleItem(this)" style="margin-top:28px;flex-shrink:0;">
+        <i class="bi bi-trash3"></i>
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Totals -->
+  <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+      <span style="font-size:13px;color:var(--tm);">Taxable Amount</span>
+      <span style="font-size:16px;font-weight:600;" id="edit-taxable">₹0</span>
+    </div>
+    {% if sale.gst_rate > 0 %}
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+      <span style="font-size:13px;color:var(--tm);">GST ({{ sale.gst_rate }}%)</span>
+      <span style="font-size:14px;color:var(--tm);" id="edit-gst">₹0</span>
+    </div>
+    {% endif %}
+    <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid var(--border);">
+      <span style="font-size:14px;font-weight:700;color:var(--ts);">Grand Total (incl. GST)</span>
+      <span style="font-size:22px;font-weight:700;font-family:'Fraunces',serif;color:var(--wood-800);" id="edit-grand">₹0</span>
+    </div>
+    {% if sale.amount_received > 0 %}
+    <div style="display:flex;justify-content:space-between;margin-top:6px;">
+      <span style="font-size:13px;color:var(--tm);">Already Received</span>
+      <span style="font-size:14px;color:#2d6a27;font-weight:600;">₹{{ sale.amount_received|floatformat:0 }}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:4px;">
+      <span style="font-size:13px;color:var(--tm);">New Balance Due</span>
+      <span style="font-size:16px;font-weight:700;" id="edit-balance">₹0</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="fp-actions">
+  <a class="bs" href="{% url 'sale_detail' sale.pk %}">Cancel</a>
+  <button class="bw" type="submit"><i class="bi bi-check2"></i> Update Sale</button>
+</div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const PRODUCTS_SALE = {
+  {% for p in products %}
+  {{ p.pk }}: { id: {{ p.pk }}, name: "{{ p.display_name }}",
+    stock: {{ p.stock_qty|floatformat:4 }}, sale_rate: {{ p.sale_rate|floatformat:2 }} },
+  {% endfor %}
+};
+const GST_RATE   = {{ godown_obj.gst_rate|floatformat:2 }};
+const SALE_GST   = {{ sale.gst_rate|floatformat:2 }};
+const AMT_RECD   = {{ sale.amount_received|floatformat:2 }};
+const OLD_ITEM_QTYS = {
+  {% for item in sale.items.all %}
+  {{ item.product.pk }}: {{ item.qty_sqm|floatformat:4 }},
+  {% endfor %}
+};
+
+function calcSaleEditLine(li) {
+  const qty  = parseFloat(li.querySelector('.sale-qty')?.value) || 0;
+  const rate = parseFloat(li.querySelector('.sale-rate')?.value) || 0;
+  const el   = li.querySelector('.li-amt');
+  if (el) el.value = qty > 0 && rate > 0 ? (qty*rate).toLocaleString('en-IN',{maximumFractionDigits:2}) : '';
+  calcSaleEditTotal();
+}
+
+function calcSaleEditTotal() {
+  let taxable = 0;
+  document.querySelectorAll('#edit-sale-items .li-amt').forEach(a => {
+    taxable += parseFloat((a.value||'0').replace(/,/g,''))||0;
+  });
+  const gst   = (taxable * SALE_GST / 100);
+  const grand = taxable + gst;
+  const bal   = Math.max(0, grand - AMT_RECD);
+
+  document.getElementById('edit-taxable').textContent = '₹' + taxable.toLocaleString('en-IN',{maximumFractionDigits:0});
+  const gstEl = document.getElementById('edit-gst');
+  if (gstEl) gstEl.textContent = '₹' + gst.toLocaleString('en-IN',{maximumFractionDigits:0});
+  document.getElementById('edit-grand').textContent = '₹' + grand.toLocaleString('en-IN',{maximumFractionDigits:0});
+  const balEl = document.getElementById('edit-balance');
+  if (balEl) balEl.textContent = '₹' + bal.toLocaleString('en-IN',{maximumFractionDigits:0});
+}
+
+function onSaleProductChange(sel) {
+  const li  = sel.closest('.line-item');
+  const pid = sel.value;
+  const prod = PRODUCTS_SALE[pid];
+  if (!prod) return;
+  const rateEl = li.querySelector('.sale-rate');
+  if (rateEl && !rateEl.value) rateEl.value = prod.sale_rate.toFixed(2);
+}
+
+let saleEditCount = {{ sale.items.count }};
+function addSaleItem() {
+  saleEditCount++;
+  const opts = Object.values(PRODUCTS_SALE).map(p =>
+    `<option value="${p.id}" data-stock="${p.stock}" data-sale-rate="${p.sale_rate}">${p.name} (${p.stock.toFixed(2)} sq.m available)</option>`
+  ).join('');
+  const html = `
+  <div class="line-item" style="margin-bottom:12px;align-items:flex-start;">
+    <div class="li-num" style="margin-top:30px;">${saleEditCount}</div>
+    <div style="flex:1;min-width:0;">
+      <div class="frow">
+        <div class="fhalf"><label class="fl">Product *</label>
+          <select class="fc fsel" name="product[]" onchange="onSaleProductChange(this)">
+            <option value="">Select product</option>${opts}
+          </select></div>
+        <div class="fhalf"><label class="fl">Size</label>
+          <input class="fc" name="size[]" placeholder="e.g. 8×4 ft"></div>
+      </div>
+      <div class="frow">
+        <div class="fthird"><label class="fl">Qty (sq.m) *</label>
+          <input class="fc sale-qty" name="qty_sqm[]" type="number" step="0.0001" placeholder="0.0000"
+                 oninput="calcSaleEditLine(this.closest('.line-item'))"></div>
+        <div class="fthird"><label class="fl">Rate (₹/sq.m) *</label>
+          <input class="fc sale-rate" name="rate_per_sqm[]" type="number" step="0.01" placeholder="0.00"
+                 oninput="calcSaleEditLine(this.closest('.line-item'))"></div>
+        <div class="fthird"><label class="fl">Amount (₹)</label>
+          <input class="fc li-amt" readonly style="background:#f0ebe3;font-weight:600;"></div>
+      </div>
+    </div>
+    <button type="button" class="li-del" onclick="removeSaleItem(this)" style="margin-top:28px;flex-shrink:0;">
+      <i class="bi bi-trash3"></i>
+    </button>
+  </div>`;
+  document.getElementById('edit-sale-items').insertAdjacentHTML('beforeend', html);
+  refreshSaleDel();
+}
+
+function removeSaleItem(btn) {
+  btn.closest('.line-item').remove();
+  document.querySelectorAll('#edit-sale-items .line-item').forEach((li,i) => {
+    const n = li.querySelector('.li-num');
+    if (n) n.textContent = i+1;
+  });
+  refreshSaleDel();
+  calcSaleEditTotal();
+}
+
+function refreshSaleDel() {
+  const items = document.querySelectorAll('#edit-sale-items .line-item');
+  items.forEach(li => {
+    const btn = li.querySelector('.li-del');
+    if (btn) btn.style.display = items.length > 1 ? 'flex' : 'none';
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#edit-sale-items .line-item').forEach(li => calcSaleEditLine(li));
+  refreshSaleDel();
+});
+</script>
+{% endblock %}

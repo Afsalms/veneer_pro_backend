@@ -1,0 +1,304 @@
+{% extends "godown/base.html" %}
+{% block title %}Edit {{ grn.grn_number }}{% endblock %}
+{% block page_title %}Edit GRN{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <a class="fp-back" href="{% url 'grn_detail' grn.pk %}"><i class="bi bi-arrow-left"></i></a>
+  <span class="fp-title">Edit {{ grn.grn_number }}</span>
+</div>
+
+{% with sold_count=grn.items.all|length %}
+{% if sold_count %}
+<div style="background:#fef6e4;border:1px solid #fde8a0;border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#a06a10;">
+  <i class="bi bi-exclamation-circle"></i> <strong>Sales have been made from this GRN.</strong>
+  Item quantities cannot be reduced below what has already been sold.
+</div>
+{% endif %}
+{% endwith %}
+
+{% if form_errors %}
+<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:12px 16px;margin-bottom:14px;color:#b33a36;font-size:13px;">
+  <strong><i class="bi bi-exclamation-triangle"></i> Please fix:</strong>
+  <ul style="margin:6px 0 0 18px;padding:0;">{% for e in form_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" id="edit-grn-form">{% csrf_token %}
+
+<!-- GRN Details -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="font-size:13px;font-weight:600;color:var(--ts);margin-bottom:14px;">GRN Details</div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">GRN Number</label>
+      <input class="fc" value="{{ grn.grn_number }}" readonly style="background:#f0ebe3;font-family:monospace;font-weight:600;">
+    </div>
+    <div class="fhalf">
+      <label class="fl">Date *</label>
+      <input class="fc" name="date" type="date" required value="{{ grn.date|date:'Y-m-d' }}">
+    </div>
+  </div>
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Supplier *</label>
+      <select class="fc fsel" name="supplier" required>
+        {% for s in suppliers %}
+        <option value="{{ s.pk }}" {% if s.pk == grn.supplier.pk %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="fhalf">
+      <label class="fl">Supplier Invoice No</label>
+      <input class="fc" name="invoice_number" value="{{ grn.invoice_number|default:'' }}">
+    </div>
+  </div>
+  <div class="frow">
+    <div class="ffull">
+      <label class="fl">Notes</label>
+      <input class="fc" name="notes" value="{{ grn.notes|default:'' }}" placeholder="Optional">
+    </div>
+  </div>
+</div>
+
+<!-- Items -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <span style="font-size:13px;font-weight:600;color:var(--ts);">Items Received</span>
+    <button type="button" class="add-item-btn" onclick="addGRNItem()"><i class="bi bi-plus"></i> Add Item</button>
+  </div>
+  <div id="grn-items">
+    {% for item in grn.items.all %}
+    {% with sold=item.qty_sqm|add:0 %}
+    <div class="line-item" style="margin-bottom:12px;align-items:flex-start;"
+         data-min-qty="{{ item.qty_sqm }}">
+      <div class="li-num" style="margin-top:30px;">{{ forloop.counter }}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="frow">
+          <div class="fhalf">
+            <label class="fl">Product *</label>
+            <select class="fc fsel" name="product[]" onchange="onGRNProductChange(this)">
+              {% for p in products %}
+              <option value="{{ p.pk }}" {% if p.pk == item.product.pk %}selected{% endif %}
+                      data-sheet-sqm="{{ p.effective_sheet_sqm }}"
+                      data-sheet-length="{{ p.sheet_length }}"
+                      data-sheet-width="{{ p.sheet_width }}">
+                {{ p.display_name }}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="fhalf">
+            <label class="fl">Rack Location</label>
+            <input class="fc" name="rack[]" value="{{ item.rack_location }}" placeholder="e.g. A-1">
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fthird">
+            <label class="fl">Qty (sq.m) *</label>
+            <input class="fc grn-qty" name="qty_sqm[]" type="number" step="0.0001"
+                   value="{{ item.qty_sqm }}"
+                   oninput="calcGRNLine(this.closest('.line-item'))">
+          </div>
+          <div class="fthird">
+            <label class="fl">Rate (₹/sq.m) *</label>
+            <input class="fc grn-rate" name="rate_per_sqm[]" type="number" step="0.01"
+                   value="{{ item.rate_per_sqm }}"
+                   oninput="calcGRNLine(this.closest('.line-item'))">
+          </div>
+          <div class="fthird">
+            <label class="fl">Amount (₹)</label>
+            <input class="fc li-amt" readonly style="background:#f0ebe3;font-weight:600;">
+          </div>
+        </div>
+        <input type="hidden" name="qty_unit[]" value="{{ item.qty_unit }}">
+        <div class="grn-item-info" style="font-size:11px;color:var(--tm);margin-top:4px;padding:6px 10px;background:var(--body-bg);border-radius:6px;">
+          <i class="bi bi-info-circle"></i>
+          Landed rate: ₹{{ item.landed_rate|floatformat:2 }}/sq.m
+          — Avg cost used: ₹{{ item.product.avg_cost|floatformat:2 }}/sq.m
+        </div>
+      </div>
+      <button type="button" class="li-del" onclick="removeGRNItem(this)" style="margin-top:28px;flex-shrink:0;">
+        <i class="bi bi-trash3"></i>
+      </button>
+    </div>
+    {% endwith %}
+    {% endfor %}
+  </div>
+
+  <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;">
+    <span style="font-size:13px;color:var(--tm);">Items Total</span>
+    <span style="font-size:18px;font-weight:700;font-family:'Fraunces',serif;" id="grn-items-total">₹0</span>
+  </div>
+</div>
+
+<!-- Landing Expenses -->
+<div class="cv" style="margin-bottom:14px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <span style="font-size:13px;font-weight:600;color:var(--ts);">Landing Expenses</span>
+    <button type="button" class="add-item-btn" onclick="addLandingRow()"><i class="bi bi-plus"></i> Add</button>
+  </div>
+  <div id="landing-rows">
+    {% for e in grn.landing_expenses.all %}
+    <div class="frow" style="margin-bottom:8px;" data-landing-row>
+      <div style="width:36px;flex-shrink:0;padding-top:30px;color:var(--tm);font-size:12px;text-align:center;">{{ forloop.counter }}</div>
+      <div class="fquarter"><label class="fl">Category</label><input class="fc" name="exp_cat[]" value="{{ e.category }}" placeholder="e.g. Transport"></div>
+      <div class="fquarter"><label class="fl">Amount (₹)</label><input class="fc" name="exp_amt[]" type="number" step="0.01" value="{{ e.amount }}" oninput="calcGRNGrand()"></div>
+      <div class="fquarter"><label class="fl">Paid To</label><input class="fc" name="exp_paid_to[]" value="{{ e.paid_to }}" placeholder="Person / company"></div>
+      <div class="fquarter"><label class="fl">Description</label><input class="fc" name="exp_desc[]" value="{{ e.description }}" placeholder="Optional"></div>
+      <button type="button" onclick="this.closest('[data-landing-row]').remove();calcGRNGrand();"
+              style="margin-top:28px;flex-shrink:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:#b33a36;">
+        <i class="bi bi-trash3"></i>
+      </button>
+    </div>
+    {% empty %}
+    <div class="frow" style="margin-bottom:8px;" data-landing-row>
+      <div style="width:36px;flex-shrink:0;padding-top:30px;color:var(--tm);font-size:12px;text-align:center;">1</div>
+      <div class="fquarter"><label class="fl">Category</label><input class="fc" name="exp_cat[]" placeholder="e.g. Transport"></div>
+      <div class="fquarter"><label class="fl">Amount (₹)</label><input class="fc" name="exp_amt[]" type="number" step="0.01" placeholder="0" oninput="calcGRNGrand()"></div>
+      <div class="fquarter"><label class="fl">Paid To</label><input class="fc" name="exp_paid_to[]" placeholder="Person / company"></div>
+      <div class="fquarter"><label class="fl">Description</label><input class="fc" name="exp_desc[]" placeholder="Optional"></div>
+      <button type="button" onclick="this.closest('[data-landing-row]').remove();calcGRNGrand();"
+              style="margin-top:28px;flex-shrink:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:#b33a36;">
+        <i class="bi bi-trash3"></i>
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+      <span style="font-size:13px;color:var(--tm);">Landing Expenses</span>
+      <span style="font-size:14px;font-weight:600;" id="grn-landing-total">₹0</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;">
+      <span style="font-size:13px;font-weight:700;color:var(--ts);">Grand Total</span>
+      <span style="font-size:20px;font-weight:700;font-family:'Fraunces',serif;" id="grn-grand-total">₹0</span>
+    </div>
+  </div>
+</div>
+
+<div class="fp-actions">
+  <a class="bs" href="{% url 'grn_detail' grn.pk %}">Cancel</a>
+  <button class="bw" type="submit"><i class="bi bi-check2"></i> Update GRN</button>
+</div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const PRODUCTS_GRN = {
+  {% for p in products %}
+  {{ p.pk }}: { id: {{ p.pk }}, name: "{{ p.display_name }}",
+    sheet_sqm: {{ p.effective_sheet_sqm|floatformat:4 }},
+    sheet_length: {{ p.sheet_length }}, sheet_width: {{ p.sheet_width }} },
+  {% endfor %}
+};
+
+function calcGRNLine(li) {
+  const qty  = parseFloat(li.querySelector('.grn-qty')?.value) || 0;
+  const rate = parseFloat(li.querySelector('.grn-rate')?.value) || 0;
+  const el   = li.querySelector('.li-amt');
+  if (el) el.value = qty > 0 && rate > 0 ? (qty*rate).toLocaleString('en-IN',{maximumFractionDigits:2}) : '';
+  calcGRNGrand();
+}
+
+function calcGRNGrand() {
+  let items = 0;
+  document.querySelectorAll('#grn-items .li-amt').forEach(a => {
+    items += parseFloat((a.value||'0').replace(/,/g,''))||0;
+  });
+  let landing = 0;
+  document.querySelectorAll('[data-landing-row] [name="exp_amt[]"]').forEach(a => {
+    landing += parseFloat(a.value||'0')||0;
+  });
+  document.getElementById('grn-items-total').textContent  = '₹' + items.toLocaleString('en-IN',{maximumFractionDigits:0});
+  document.getElementById('grn-landing-total').textContent = '₹' + landing.toLocaleString('en-IN',{maximumFractionDigits:0});
+  document.getElementById('grn-grand-total').textContent   = '₹' + (items+landing).toLocaleString('en-IN',{maximumFractionDigits:0});
+}
+
+function onGRNProductChange(sel) {
+  const li  = sel.closest('.line-item');
+  const pid = sel.value;
+  const prod = PRODUCTS_GRN[pid];
+  if (!prod) return;
+}
+
+let grnCount = {{ grn.items.count }};
+function addGRNItem() {
+  grnCount++;
+  const opts = Object.values(PRODUCTS_GRN).map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const html = `
+  <div class="line-item" style="margin-bottom:12px;align-items:flex-start;">
+    <div class="li-num" style="margin-top:30px;">${grnCount}</div>
+    <div style="flex:1;min-width:0;">
+      <div class="frow">
+        <div class="fhalf"><label class="fl">Product *</label>
+          <select class="fc fsel" name="product[]" onchange="onGRNProductChange(this)">
+            <option value="">Select product</option>${opts}
+          </select></div>
+        <div class="fhalf"><label class="fl">Rack Location</label>
+          <input class="fc" name="rack[]" placeholder="e.g. A-1"></div>
+      </div>
+      <div class="frow">
+        <div class="fthird"><label class="fl">Qty (sq.m) *</label>
+          <input class="fc grn-qty" name="qty_sqm[]" type="number" step="0.0001" placeholder="0.0000"
+                 oninput="calcGRNLine(this.closest('.line-item'))"></div>
+        <div class="fthird"><label class="fl">Rate (₹/sq.m) *</label>
+          <input class="fc grn-rate" name="rate_per_sqm[]" type="number" step="0.01" placeholder="0.00"
+                 oninput="calcGRNLine(this.closest('.line-item'))"></div>
+        <div class="fthird"><label class="fl">Amount (₹)</label>
+          <input class="fc li-amt" readonly style="background:#f0ebe3;font-weight:600;"></div>
+      </div>
+      <input type="hidden" name="qty_unit[]" value="sqm">
+    </div>
+    <button type="button" class="li-del" onclick="removeGRNItem(this)" style="margin-top:28px;flex-shrink:0;">
+      <i class="bi bi-trash3"></i>
+    </button>
+  </div>`;
+  document.getElementById('grn-items').insertAdjacentHTML('beforeend', html);
+  refreshGRNDel();
+}
+
+function removeGRNItem(btn) {
+  btn.closest('.line-item').remove();
+  document.querySelectorAll('#grn-items .line-item').forEach((li,i) => {
+    const n = li.querySelector('.li-num');
+    if (n) n.textContent = i+1;
+  });
+  refreshGRNDel();
+  calcGRNGrand();
+}
+
+function refreshGRNDel() {
+  const items = document.querySelectorAll('#grn-items .line-item');
+  items.forEach(li => {
+    const btn = li.querySelector('.li-del');
+    if (btn) btn.style.display = items.length > 1 ? 'flex' : 'none';
+  });
+}
+
+let landingCount = document.querySelectorAll('[data-landing-row]').length;
+function addLandingRow() {
+  landingCount++;
+  const html = `
+  <div class="frow" style="margin-bottom:8px;" data-landing-row>
+    <div style="width:36px;flex-shrink:0;padding-top:30px;color:var(--tm);font-size:12px;text-align:center;">${landingCount}</div>
+    <div class="fquarter"><label class="fl">Category</label><input class="fc" name="exp_cat[]" placeholder="e.g. Transport"></div>
+    <div class="fquarter"><label class="fl">Amount (₹)</label><input class="fc" name="exp_amt[]" type="number" step="0.01" placeholder="0" oninput="calcGRNGrand()"></div>
+    <div class="fquarter"><label class="fl">Paid To</label><input class="fc" name="exp_paid_to[]" placeholder="Person / company"></div>
+    <div class="fquarter"><label class="fl">Description</label><input class="fc" name="exp_desc[]" placeholder="Optional"></div>
+    <button type="button" onclick="this.closest('[data-landing-row]').remove();calcGRNGrand();"
+            style="margin-top:28px;flex-shrink:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:#b33a36;">
+      <i class="bi bi-trash3"></i>
+    </button>
+  </div>`;
+  document.getElementById('landing-rows').insertAdjacentHTML('beforeend', html);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#grn-items .line-item').forEach(li => calcGRNLine(li));
+  refreshGRNDel();
+  calcGRNGrand();
+});
+</script>
+{% endblock %}

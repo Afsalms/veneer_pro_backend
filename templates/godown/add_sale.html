@@ -36,6 +36,21 @@
 
   <div class="frow">
     <div class="fhalf">
+      <label class="fl">Bill Number</label>
+      <input class="fc" name="bill_number" id="bill-number-input"
+             placeholder="{{ next_bill_number }}"
+             value="{{ next_bill_number }}"
+             style="font-family:monospace;font-weight:600;"
+             title="Auto-generated. Edit if needed.">
+    </div>
+    <div class="fhalf">
+      <label class="fl">Date *</label>
+      <input class="fc" name="date" type="date" required value="{% now 'Y-m-d' %}">
+    </div>
+  </div>
+
+  <div class="frow">
+    <div class="fhalf">
       <label class="fl">Customer *</label>
       <select class="fc fsel" name="customer" required onchange="onCustomerChange(this)">
         <option value="">Select customer</option>
@@ -49,8 +64,8 @@
       </select>
     </div>
     <div class="fhalf">
-      <label class="fl">Date *</label>
-      <input class="fc" name="date" type="date" required value="{% now 'Y-m-d' %}">
+      <label class="fl">Due Date</label>
+      <input class="fc" name="due_date" type="date">
     </div>
   </div>
 
@@ -58,12 +73,8 @@
   <div id="credit-limit-bar" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:10px;"></div>
 
   <div class="frow">
-    <div class="fhalf"><label class="fl">Due Date</label><input class="fc" name="due_date" type="date"></div>
     <div class="fhalf"><label class="fl">Customer PO No</label><input class="fc" name="po_reference" placeholder="Optional"></div>
-  </div>
-
-  <div class="frow">
-    <div class="ffull"><label class="fl">Transport / Vehicle</label><input class="fc" name="transport" placeholder="Optional"></div>
+    <div class="fhalf"><label class="fl">Transport / Vehicle</label><input class="fc" name="transport" placeholder="Optional"></div>
   </div>
 </div>
 
@@ -382,10 +393,20 @@ function calcSaleTotal() {
 }
 
 // ── Sale type toggle ──────────────────────────────────────────────
+const NEXT_BILL_NUM = "{{ next_bill_number }}";
+const NEXT_CM_NUM   = "{{ next_cm_number }}";
+
 function onSaleTypeChange() {
   const isBill = document.getElementById('type-bill').checked;
   document.getElementById('type-bill-label').style.borderColor = isBill ? 'var(--wood-400)' : 'var(--border)';
   document.getElementById('type-cash-label').style.borderColor = !isBill ? 'var(--wood-400)' : 'var(--border)';
+  // Update bill number preview
+  const numInput = document.getElementById('bill-number-input');
+  if (numInput) {
+    const suggested = isBill ? NEXT_BILL_NUM : NEXT_CM_NUM;
+    numInput.placeholder = suggested;
+    numInput.value = suggested;
+  }
   // Show e-Way Bill card only for tax invoices
   document.getElementById('eway-card').style.display = isBill ? '' : 'none';
   // Recalculate totals (GST changes)
