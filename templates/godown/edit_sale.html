@@ -89,7 +89,7 @@
               <option value="{{ p.pk }}" {% if p.pk == item.product.pk %}selected{% endif %}
                       data-stock="{{ p.stock_qty|floatformat:4 }}"
                       data-sale-rate="{{ p.sale_rate|floatformat:2 }}">
-                {{ p.display_name }} ({{ p.stock_qty|floatformat:2 }} sq.m available)
+                {{ p.display_name_sale }} ({{ p.stock_qty|floatformat:2 }} sq.m available)
               </option>
               {% endfor %}
             </select>
@@ -165,7 +165,7 @@
 <script>
 const PRODUCTS_SALE = {
   {% for p in products %}
-  {{ p.pk }}: { id: {{ p.pk }}, name: "{{ p.display_name }}",
+  {{ p.pk }}: { id: {{ p.pk }}, name: "{{ p.display_name_sale }}",
     stock: {{ p.stock_qty|floatformat:4 }}, sale_rate: {{ p.sale_rate|floatformat:2 }} },
   {% endfor %}
 };

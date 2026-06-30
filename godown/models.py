@@ -199,7 +199,9 @@ class Product(models.Model):
                       ('Backed (Paper)','Backed (Paper)'),('Backed (Fabric)','Backed (Fabric)')]
 
     godown      = models.ForeignKey(Godown, on_delete=models.CASCADE, related_name='products')
-    species     = models.CharField(max_length=100)
+    species     = models.CharField(max_length=100, help_text='Purchase / internal name')
+    sale_name   = models.CharField(max_length=100,
+                      help_text='Name shown to customers when selling. Defaults to the purchase name but must be set.')
     thickness   = models.CharField(max_length=10, choices=THICKNESS_CHOICES, default='0.6mm')
     cut_type    = models.CharField(max_length=20, choices=CUT_CHOICES, default='Flat Cut')
     finish      = models.CharField(max_length=20, choices=FINISH_CHOICES, default='Natural')
@@ -238,6 +240,23 @@ class Product(models.Model):
     @property
     def display_name(self):
         return f"{self.species} {self.thickness}"
+
+    @property
+    def effective_sale_name(self):
+        """Name shown in selling contexts — sale_name if set, else species."""
+        return self.sale_name if self.sale_name else self.species
+
+    @property
+    def display_name_sale(self):
+        """Full display name for selling contexts (invoices, sale forms, customer statements)."""
+        return f"{self.effective_sale_name} {self.thickness}"
+
+    @property
+    def display_name_internal(self):
+        """Internal view name showing both purchase and sale name if they differ."""
+        if self.sale_name and self.sale_name != self.species:
+            return f"{self.species} {self.thickness} (sold as: {self.sale_name})"
+        return self.display_name
 
     @property
     def sheet_sqft(self):

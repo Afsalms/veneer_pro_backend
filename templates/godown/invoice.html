@@ -128,7 +128,7 @@ body{font-family:'DM Sans',sans-serif;font-size:13px;color:#1a1a1a;background:#f
       {% for item in sale.items.all %}
       <tr>
         <td class="center" style="color:#888;">{{ forloop.counter }}</td>
-        <td><strong>{{ item.product.species }} Face Veneer</strong><br><span style="font-size:11px;color:#666;">{{ item.product.cut_type }} · {{ item.product.finish }}</span></td>
+        <td><strong>{{ item.product.effective_sale_name }} Face Veneer</strong><br><span style="font-size:11px;color:#666;">{{ item.product.cut_type }} · {{ item.product.finish }}</span></td>
         <td style="color:#555;">{{ item.product.hsn_code|default:'4408' }}</td>
         <td class="center">{{ item.product.thickness }}</td>
         {% if sale.items.first.size %}<td class="center">{{ item.size|default:'—' }}</td>{% endif %}

@@ -12,14 +12,17 @@
     <div style="background:var(--wood-100);height:70px;display:flex;align-items:center;justify-content:center;"><i class="bi bi-layers" style="font-size:28px;color:var(--wood-600);"></i></div>
     <div style="padding:12px;">
       <div style="font-weight:600;font-size:13px;">{{ p.species }} {{ p.thickness }}</div>
-      <div style="font-size:11px;color:var(--tm);margin-bottom:8px;">{{ p.cut_type }} · {{ p.finish }}</div>
+      {% if p.sale_name and p.sale_name != p.species %}
+      <div style="font-size:11px;color:var(--wood-600);margin-top:1px;"><i class="bi bi-tag"></i> Sold as: {{ p.sale_name }}</div>
+      {% endif %}
+      <div style="font-size:11px;color:var(--tm);margin-bottom:8px;margin-top:2px;">{{ p.cut_type }} · {{ p.finish }}</div>
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span style="color:var(--ts);">Stock</span><span style="font-weight:600;{% if p.stock_status == 'critical' %}color:#b33a36;{% endif %}">{{ p.stock_qty|floatformat:0 }} sq.m</span></div>
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px;"><span style="color:var(--ts);">Sale Rate</span><span style="font-weight:600;color:var(--wood-600);">₹{{ p.sale_rate }}/sq\.m</span></div>
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <span class="bv {% if p.stock_status == 'ok' %}bg{% elif p.stock_status == 'low' %}ba{% else %}br{% endif %}">{{ p.stock_status|title }}</span>
         <a class="bs" href="{% url 'edit_product' p.pk %}" style="font-size:11px;padding:3px 10px;">Edit</a>
         {% if p.pk not in used_pks %}
-        <form method="post" action="{% url 'delete_product' p.pk %}" style="display:inline;" onsubmit="return confirm('Delete {{ p.display_name }}?');">{% csrf_token %}
+        <form method="post" action="{% url 'delete_product' p.pk %}" style="display:inline;" onsubmit="return confirm('Delete {{ p.display_name_internal }}?');">{% csrf_token %}
           <button type="submit" class="bs" style="font-size:11px;padding:3px 8px;color:#b33a36;border-color:#f5c6cb;"><i class="bi bi-trash3"></i></button>
         </form>
         {% else %}<span style="font-size:10px;color:var(--tm);">In use</span>{% endif %}

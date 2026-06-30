@@ -29,7 +29,7 @@
       <td><a href="{% url 'sale_detail' s.pk %}" style="font-weight:500;color:var(--wood-600);">{{ s.bill_number }}</a></td>
       <td style="color:var(--tm);">{{ s.date }}</td>
       <td>{{ s.customer.name }}</td>
-      <td>{% for item in s.items.all %}<span class="chip">{{ item.product.display_name }}</span> {% endfor %}</td>
+      <td>{% for item in s.items.all %}<span class="chip">{{ item.product.display_name_sale }}</span> {% endfor %}</td>
       <td>₹{{ s.total_amount|floatformat:0 }}</td>
       <td style="color:var(--tm);font-size:12px;">+₹{{ s.gst_amount|floatformat:0 }}</td>
       <td style="font-weight:600;">₹{{ s.grand_total|floatformat:0 }}</td>
@@ -51,7 +51,7 @@
       <div><div class="mcn">{{ s.customer.name }}</div><div class="mcs">{{ s.bill_number }} · {{ s.date }}</div></div>
       <span class="bv {% if s.status == 'paid' %}bg{% elif s.status == 'partial' %}ba{% else %}br{% endif %}">{{ s.status|title }}</span>
     </div>
-    {% for item in s.items.all %}<div class="mr"><span class="mrk">{{ item.product.display_name }}</span><span class="mrv">{{ item.qty_sqm|floatformat:0 }} sq.m</span></div>{% endfor %}
+    {% for item in s.items.all %}<div class="mr"><span class="mrk">{{ item.product.display_name_sale }}</span><span class="mrv">{{ item.qty_sqm|floatformat:0 }} sq.m</span></div>{% endfor %}
     <div class="mr"><span class="mrk">Taxable</span><span class="mrv">₹{{ s.total_amount|floatformat:0 }}</span></div>
     <div class="mr"><span class="mrk">GST {{ s.gst_rate }}%</span><span class="mrv">₹{{ s.gst_amount|floatformat:0 }}</span></div>
     <div class="mr"><span class="mrk">Total</span><span class="mrv" style="font-weight:700;color:var(--wood-600);">₹{{ s.grand_total|floatformat:0 }}</span></div>

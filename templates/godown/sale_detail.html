@@ -37,7 +37,7 @@
     <tbody>
     {% for item in sale.items.all %}
     <tr>
-      <td style="font-weight:500;">{{ item.product.display_name }}</td>
+      <td style="font-weight:500;">{{ item.product.display_name_sale }}</td>
       <td style="color:var(--tm);">{{ item.size|default:"—" }}</td>
       <td>{{ item.qty_sqm|floatformat:2 }}</td>
       <td>₹{{ item.rate_per_sq.m }}</td>

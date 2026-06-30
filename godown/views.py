@@ -661,13 +661,34 @@ def products(request):
 def add_product(request):
     godown = get_godown(request)
     if request.method == 'POST':
+        errors = []
+        species   = request.POST.get('species', '').strip()
+        sale_name = request.POST.get('sale_name', '').strip()
+        if not species:
+            errors.append('Purchase Name (Species) is required.')
+        if not sale_name:
+            errors.append('Selling Name is required.')
+        if errors:
+            for e in errors: messages.error(request, e)
+            return render(request, 'godown/add_product.html', ctx(request, {
+                'active':'products',
+                'thickness_choices': LookupValue.choices_for(godown, 'thickness'),
+                'cut_choices':       LookupValue.choices_for(godown, 'cut_type'),
+                'finish_choices':    LookupValue.choices_for(godown, 'finish'),
+                'default_thickness': LookupValue.default_for(godown, 'thickness'),
+                'default_cut':       LookupValue.default_for(godown, 'cut_type'),
+                'default_finish':    LookupValue.default_for(godown, 'finish'),
+                'form_errors':       errors,
+                'posted':            request.POST,
+            }))
         sl  = Decimal(request.POST.get('sheet_length', 8) or 8)
         sw  = Decimal(request.POST.get('sheet_width',  4) or 4)
         auto_sqm = (sl * sw * Decimal('0.0929')).quantize(Decimal('0.0001'))
         ov_raw   = request.POST.get('sheet_sqm_override', '').strip()
         override = Decimal(ov_raw).quantize(Decimal('0.0001')) if ov_raw else None
         Product.objects.create(
-            godown=godown, species=request.POST['species'],
+            godown=godown, species=species,
+            sale_name=sale_name,
             thickness=request.POST.get('thickness','0.6mm'),
             cut_type=request.POST.get('cut_type','Flat Cut'),
             finish=request.POST.get('finish','Natural'),
@@ -696,10 +717,27 @@ def edit_product(request, pk):
     godown = get_godown(request)
     p = get_object_or_404(Product, pk=pk, godown=godown)
     if request.method == 'POST':
+        errors = []
+        species   = request.POST.get('species', '').strip()
+        sale_name = request.POST.get('sale_name', '').strip()
+        if not species:
+            errors.append('Purchase Name (Species) is required.')
+        if not sale_name:
+            errors.append('Selling Name is required.')
+        if errors:
+            for e in errors: messages.error(request, e)
+            return render(request, 'godown/add_product.html', ctx(request, {
+                'active':'products', 'product':p,
+                'thickness_choices': LookupValue.choices_for(godown, 'thickness'),
+                'cut_choices':       LookupValue.choices_for(godown, 'cut_type'),
+                'finish_choices':    LookupValue.choices_for(godown, 'finish'),
+                'form_errors':       errors,
+            }))
         sl  = Decimal(request.POST.get('sheet_length', 8) or 8)
         sw  = Decimal(request.POST.get('sheet_width',  4) or 4)
         ov_raw = request.POST.get('sheet_sqm_override', '').strip()
-        p.species=request.POST['species']; p.thickness=request.POST.get('thickness','0.6mm')
+        p.species=species; p.sale_name=sale_name
+        p.thickness=request.POST.get('thickness','0.6mm')
         p.cut_type=request.POST.get('cut_type','Flat Cut'); p.finish=request.POST.get('finish','Natural')
         p.buy_rate=request.POST.get('buy_rate',0) or 0; p.sale_rate=request.POST.get('sale_rate',0) or 0
         p.min_stock=request.POST.get('min_stock',500) or 500; p.hsn_code=request.POST.get('hsn_code','4408')

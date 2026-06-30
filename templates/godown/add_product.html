@@ -3,13 +3,38 @@
 {% block page_title %}{% if product %}Edit{% else %}Add{% endif %} Product{% endblock %}
 {% block content %}
 <div class="fp-header"><a class="fp-back" href="{% url 'products' %}"><i class="bi bi-arrow-left"></i></a><span class="fp-title">{% if product %}Edit Product{% else %}Add Product{% endif %}</span></div>
+
+{% if form_errors %}
+<div style="background:#fdecea;border:1px solid #f5c6cb;border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#b33a36;">
+  <strong><i class="bi bi-exclamation-triangle"></i> Please fix:</strong>
+  <ul style="margin:6px 0 0 18px;padding:0;">{% for e in form_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
 <form method="post" id="product-form" novalidate>{% csrf_token %}
 <div class="cv">
-  <div class="frow"><div class="fhalf"><label class="fl">Species *</label><input class="fc" name="species" value="{{ product.species|default:'' }}" required placeholder="e.g. Teak, Oak, Walnut"></div><div class="fhalf"><label class="fl">Thickness</label><select class="fc fsel" name="thickness">
+  <div class="frow">
+    <div class="fhalf">
+      <label class="fl">Species (Purchase Name) *</label>
+      <input class="fc" name="species" value="{{ product.species|default:'' }}" required
+             placeholder="e.g. Teak, Oak, Walnut" oninput="onSpeciesInput()">
+    </div>
+    <div class="fhalf">
+      <label class="fl">Selling Name *</label>
+      <input class="fc" name="sale_name" id="sale-name-input"
+             value="{{ product.sale_name|default:'' }}" required
+             placeholder="e.g. ABC-A — shown to customers">
+    </div>
+  </div>
+  <div id="sale-name-hint" style="font-size:11px;color:var(--tm);margin:-8px 0 14px;">
+    This is the name customers see on sale bills and invoices. It can be the same as the purchase name, or different.
+  </div>
+
+  <div class="frow"><div class="fhalf"><label class="fl">Thickness</label><select class="fc fsel" name="thickness">
         {% for val, label in thickness_choices %}
           <option value="{{ val }}" {% if product.thickness == val or not product and val == default_thickness %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
-      </select></div></div>
+      </select></div><div class="fhalf"></div></div>
   <div class="frow"><div class="fhalf"><label class="fl">Cut Type</label><select class="fc fsel" name="cut_type">
         {% for val, label in cut_choices %}
           <option value="{{ val }}" {% if product.cut_type == val or not product and val == default_cut %}selected{% endif %}>{{ label }}</option>
@@ -103,7 +128,6 @@ function setFieldError(name, msg) {
   const el = document.querySelector(`[name="${name}"]`);
   if (!el) return;
   el.style.borderColor = '#b33a36';
-  // Remove existing error if any
   const existing = el.parentElement.querySelector('.prod-err');
   if (existing) existing.remove();
   const err = document.createElement('div');
@@ -121,7 +145,11 @@ function clearFieldError(name) {
   if (existing) existing.remove();
 }
 
-function submitProduct() {
+function onSpeciesInput() {
+  // Just a no-op hook kept for future live preview if needed
+}
+
+async function submitProduct() {
   // Clear previous errors
   document.querySelectorAll('.prod-err').forEach(e => e.remove());
   document.querySelectorAll('.fc').forEach(e => e.style.borderColor = '');
@@ -131,8 +159,14 @@ function submitProduct() {
   const errors = [];
   const species = document.querySelector('[name="species"]').value.trim();
   if (!species || species.length < 2) {
-    errors.push('Species name is required (at least 2 characters)');
-    setFieldError('species', 'Species name is required');
+    errors.push('Purchase Name (Species) is required (at least 2 characters)');
+    setFieldError('species', 'Purchase Name is required');
+  }
+
+  const saleName = document.querySelector('[name="sale_name"]').value.trim();
+  if (!saleName || saleName.length < 2) {
+    errors.push('Selling Name is required (at least 2 characters)');
+    setFieldError('sale_name', 'Selling Name is required');
   }
 
   const saleRate = parseFloat(document.querySelector('[name="sale_rate"]').value);
@@ -166,7 +200,6 @@ function submitProduct() {
   }
 
   if (errors.length > 0) {
-    // Show summary banner at top of form
     const form = document.getElementById('product-form');
     const b = document.createElement('div');
     b.id = 'prod-error-banner';
@@ -175,9 +208,18 @@ function submitProduct() {
       + errors.map(e => `<li>${e}</li>`).join('')
       + '</ul>';
     form.insertBefore(b, form.firstChild);
-    // Scroll to banner
     b.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
+  }
+
+  // Warn if Selling Name matches Purchase Name exactly (case-insensitive)
+  if (species.toLowerCase() === saleName.toLowerCase()) {
+    const proceed = await vp.confirm(
+      `The Selling Name "${saleName}" is the same as the Purchase Name "${species}".\n\nThis means customers will see exactly the same name as your internal purchase records. Continue anyway?`,
+      'Selling Name Matches Purchase Name',
+      'warning'
+    );
+    if (!proceed) return;
   }
 
   document.getElementById('product-form').submit();

@@ -43,7 +43,7 @@
     {% for d in damages %}
     <tr>
       <td style="color:var(--tm);">{{ d.date }}</td>
-      <td style="font-weight:500;">{{ d.product.display_name }}</td>
+      <td style="font-weight:500;">{{ d.product.display_name_internal }}</td>
       <td>{% if d.grn %}<a href="{% url 'grn_detail' d.grn.pk %}" style="color:var(--wood-600);">{{ d.grn.grn_number }}</a>{% else %}<span style="color:var(--tm);">—</span>{% endif %}</td>
       <td>
         <span class="bv br" style="font-size:10px;">{{ d.get_category_display }}</span>
@@ -75,7 +75,7 @@
   <div class="mc">
     <div class="mct">
       <div>
-        <div class="mcn">{{ d.product.display_name }}</div>
+        <div class="mcn">{{ d.product.display_name_internal }}</div>
         <div class="mcs">{{ d.date }} · {% if d.grn %}{{ d.grn.grn_number }}{% else %}No GRN{% endif %}</div>
       </div>
       <span class="bv br" style="font-size:10px;">{{ d.get_category_display }}</span>

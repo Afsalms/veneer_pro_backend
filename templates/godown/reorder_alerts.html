@@ -34,7 +34,7 @@
           {% elif a.urgency == 'low' %}<i class="bi bi-arrow-down-circle" style="color:#a06a10;"></i>
           {% else %}<i class="bi bi-check-circle" style="color:#2d6a27;"></i>{% endif %}
           <div>
-            <div style="font-weight:600;">{{ a.product.display_name }}</div>
+            <div style="font-weight:600;">{{ a.product.display_name_internal }}</div>
             <div style="font-size:11px;color:var(--tm);">{{ a.product.cut_type }} · {{ a.product.finish }}</div>
           </div>
         </div>
@@ -71,7 +71,7 @@
   {% for a in alerts %}
   <div class="mc" style="{% if a.urgency in 'critical,out' %}border-color:#f5c6cb;{% elif a.urgency == 'low' %}border-color:#fde68a;{% else %}border-color:#c3e6cb;{% endif %}">
     <div class="mct">
-      <div><div class="mcn">{{ a.product.display_name }}</div><div class="mcs">{{ a.product.cut_type }} · Avg {{ a.avg_daily }} sq.m/day</div></div>
+      <div><div class="mcn">{{ a.product.display_name_internal }}</div><div class="mcs">{{ a.product.cut_type }} · Avg {{ a.avg_daily }} sq.m/day</div></div>
       <span class="bv {% if a.urgency == 'ok' %}bg{% elif a.urgency == 'low' %}ba{% else %}br{% endif %}">
         {% if a.urgency == 'out' %}Out{% elif a.urgency == 'critical' %}Critical{% elif a.urgency == 'low' %}Low{% else %}OK{% endif %}
       </span>

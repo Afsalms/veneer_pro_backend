@@ -89,7 +89,7 @@
     <div class="ch"><h6><i class="bi bi-exclamation-triangle" style="color:#c49a3c;"></i> Low Stock</h6><span class="bv ba">{{ low_stock|length }} items</span></div>
     {% for p in low_stock %}
     <div class="progress-row">
-      <div class="progress-row-head"><span style="font-weight:500;">{{ p.display_name }}</span><span style="font-size:12px;color:var(--tm);">{{ p.stock_qty|floatformat:0 }}/{{ p.min_stock|floatformat:0 }} sq.m</span></div>
+      <div class="progress-row-head"><span style="font-weight:500;">{{ p.display_name_internal }}</span><span style="font-size:12px;color:var(--tm);">{{ p.stock_qty|floatformat:0 }}/{{ p.min_stock|floatformat:0 }} sq.m</span></div>
       <div class="pv"><div class="pf" style="width:{% widthratio p.stock_qty p.min_stock 100 %}%;background:{% if p.stock_status == 'critical' %}#c0392b{% else %}#e57c10{% endif %};"></div></div>
     </div>
     {% empty %}<p style="color:var(--tm);font-size:13px;">All products adequately stocked.</p>{% endfor %}
