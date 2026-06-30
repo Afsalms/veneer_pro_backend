@@ -143,8 +143,16 @@
       <div style="width:36px;flex-shrink:0;padding-top:30px;color:var(--tm);font-size:12px;text-align:center;">{{ forloop.counter }}</div>
       <div class="fquarter"><label class="fl">Category</label><input class="fc" name="exp_cat[]" value="{{ e.category }}" placeholder="e.g. Transport"></div>
       <div class="fquarter"><label class="fl">Amount (₹)</label><input class="fc" name="exp_amt[]" type="number" step="0.01" value="{{ e.amount }}" oninput="calcGRNGrand()"></div>
-      <div class="fquarter"><label class="fl">Paid To</label><input class="fc" name="exp_paid_to[]" value="{{ e.paid_to }}" placeholder="Person / company"></div>
+      <div class="fquarter">
+        <label class="fl">Vendor {% if e.amount_paid > 0 %}<span style="color:#2d6a27;font-weight:600;">(₹{{ e.amount_paid|floatformat:0 }} paid)</span>{% endif %}</label>
+        <select class="fc fsel exp-vendor-select" name="exp_vendor[]" onchange="onExpVendorChange(this)">
+          <option value="">— No vendor —</option>
+          {% for v in service_vendors %}<option value="{{ v.pk }}" {% if e.vendor_id == v.pk %}selected{% endif %}>{{ v.name }}</option>{% endfor %}
+          <option value="__add_new__">+ Add new vendor…</option>
+        </select>
+      </div>
       <div class="fquarter"><label class="fl">Description</label><input class="fc" name="exp_desc[]" value="{{ e.description }}" placeholder="Optional"></div>
+      <input type="hidden" name="exp_paid_to[]" value="{{ e.paid_to }}">
       <button type="button" onclick="this.closest('[data-landing-row]').remove();calcGRNGrand();"
               style="margin-top:28px;flex-shrink:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:#b33a36;">
         <i class="bi bi-trash3"></i>
@@ -155,8 +163,16 @@
       <div style="width:36px;flex-shrink:0;padding-top:30px;color:var(--tm);font-size:12px;text-align:center;">1</div>
       <div class="fquarter"><label class="fl">Category</label><input class="fc" name="exp_cat[]" placeholder="e.g. Transport"></div>
       <div class="fquarter"><label class="fl">Amount (₹)</label><input class="fc" name="exp_amt[]" type="number" step="0.01" placeholder="0" oninput="calcGRNGrand()"></div>
-      <div class="fquarter"><label class="fl">Paid To</label><input class="fc" name="exp_paid_to[]" placeholder="Person / company"></div>
+      <div class="fquarter">
+        <label class="fl">Vendor</label>
+        <select class="fc fsel exp-vendor-select" name="exp_vendor[]" onchange="onExpVendorChange(this)">
+          <option value="">— No vendor —</option>
+          {% for v in service_vendors %}<option value="{{ v.pk }}">{{ v.name }}</option>{% endfor %}
+          <option value="__add_new__">+ Add new vendor…</option>
+        </select>
+      </div>
       <div class="fquarter"><label class="fl">Description</label><input class="fc" name="exp_desc[]" placeholder="Optional"></div>
+      <input type="hidden" name="exp_paid_to[]" value="">
       <button type="button" onclick="this.closest('[data-landing-row]').remove();calcGRNGrand();"
               style="margin-top:28px;flex-shrink:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:#b33a36;">
         <i class="bi bi-trash3"></i>
@@ -277,16 +293,61 @@ function refreshGRNDel() {
   });
 }
 
+let SERVICE_VENDORS = [{% for v in service_vendors %}{id:{{ v.pk }}, name:"{{ v.name|escapejs }}"},{% endfor %}];
+
+async function onExpVendorChange(sel) {
+  if (sel.value !== '__add_new__') return;
+  const name = prompt('New vendor name (e.g. "Raju Transport", "ABC Forklift Co"):');
+  if (!name || !name.trim()) { sel.value = ''; return; }
+  try {
+    const resp = await fetch('/api/quick-add-vendor/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+      },
+      body: 'name=' + encodeURIComponent(name.trim()),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      SERVICE_VENDORS.push({id: data.id, name: data.name});
+      document.querySelectorAll('.exp-vendor-select').forEach(s => {
+        const addNewOpt = s.querySelector('option[value="__add_new__"]');
+        const newOpt = document.createElement('option');
+        newOpt.value = data.id;
+        newOpt.textContent = data.name;
+        s.insertBefore(newOpt, addNewOpt);
+      });
+      sel.value = data.id;
+    } else {
+      await vp.error(data.error || 'Could not add vendor.');
+      sel.value = '';
+    }
+  } catch (e) {
+    await vp.error('Network error — could not add vendor.');
+    sel.value = '';
+  }
+}
+
 let landingCount = document.querySelectorAll('[data-landing-row]').length;
 function addLandingRow() {
   landingCount++;
+  const vendorOpts = SERVICE_VENDORS.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
   const html = `
   <div class="frow" style="margin-bottom:8px;" data-landing-row>
     <div style="width:36px;flex-shrink:0;padding-top:30px;color:var(--tm);font-size:12px;text-align:center;">${landingCount}</div>
     <div class="fquarter"><label class="fl">Category</label><input class="fc" name="exp_cat[]" placeholder="e.g. Transport"></div>
     <div class="fquarter"><label class="fl">Amount (₹)</label><input class="fc" name="exp_amt[]" type="number" step="0.01" placeholder="0" oninput="calcGRNGrand()"></div>
-    <div class="fquarter"><label class="fl">Paid To</label><input class="fc" name="exp_paid_to[]" placeholder="Person / company"></div>
+    <div class="fquarter">
+      <label class="fl">Vendor</label>
+      <select class="fc fsel exp-vendor-select" name="exp_vendor[]" onchange="onExpVendorChange(this)">
+        <option value="">— No vendor —</option>
+        ${vendorOpts}
+        <option value="__add_new__">+ Add new vendor…</option>
+      </select>
+    </div>
     <div class="fquarter"><label class="fl">Description</label><input class="fc" name="exp_desc[]" placeholder="Optional"></div>
+    <input type="hidden" name="exp_paid_to[]" value="">
     <button type="button" onclick="this.closest('[data-landing-row]').remove();calcGRNGrand();"
             style="margin-top:28px;flex-shrink:0;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;color:#b33a36;">
       <i class="bi bi-trash3"></i>

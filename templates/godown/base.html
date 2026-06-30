@@ -222,6 +222,7 @@ textarea.fc{resize:vertical;min-height:72px;}
   <div class="sb-sec">Accounts</div>
   <a class="sb-item {% if active == 'receivables' %}active{% endif %}" href="{% url 'receivables' %}"><i class="bi bi-arrow-down-circle"></i>Receivables</a>
   <a class="sb-item {% if active == 'payables' %}active{% endif %}" href="{% url 'payables' %}"><i class="bi bi-arrow-up-circle"></i>Payables</a>
+  <a class="sb-item {% if active == 'vendor_payables' %}active{% endif %}" href="{% url 'vendor_payables' %}"><i class="bi bi-truck"></i>Vendor Payables</a>
   <a class="sb-item {% if active == 'bank' %}active{% endif %}" href="{% url 'bank_accounts' %}"><i class="bi bi-bank"></i>Bank Accounts</a>
   <a class="sb-item {% if active == 'expenses' %}active{% endif %}" href="{% url 'expenses' %}"><i class="bi bi-wallet"></i>Expenses</a>
         <a class="nl {% if active == 'damages' %}na{% endif %}" href="{% url 'damage_list' %}"><i class="bi bi-exclamation-triangle"></i><span>Damage Records</span></a>

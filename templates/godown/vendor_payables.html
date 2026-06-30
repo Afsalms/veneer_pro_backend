@@ -1,0 +1,69 @@
+{% extends "godown/base.html" %}
+{% block title %}Service Vendor Payables{% endblock %}
+{% block page_title %}Service Vendor Payables{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <span class="fp-title">Service Vendor Payables</span>
+  <a class="bs" href="{% url 'payables' %}" style="margin-left:auto;"><i class="bi bi-truck-flatbed"></i> Material Payables</a>
+</div>
+<div style="font-size:12px;color:var(--tm);margin-bottom:14px;">
+  Transport, forklift, labour and other service charges from GRNs — tracked separately from material supplier balances.
+</div>
+
+<div class="sgrid cols-3">
+  <div class="sc"><div><div class="sl">Total Payable</div><div class="sv" style="color:#b33a36;">₹{{ total_payable|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">Overdue (30+ days)</div><div class="sv" style="color:#b33a36;">₹{{ overdue_amount|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">Paid This Month</div><div class="sv" style="color:#2d6a27;">₹{{ paid_month|floatformat:0 }}</div></div></div>
+</div>
+
+{% if not rows %}
+<div class="cv" style="text-align:center;padding:40px;">
+  <div style="font-size:40px;margin-bottom:12px;">🚛</div>
+  <div style="font-size:15px;font-weight:600;color:var(--ts);margin-bottom:6px;">No outstanding service charges</div>
+  <div style="font-size:13px;color:var(--tm);">Transport, forklift, and labour charges added in GRN with a vendor selected will appear here.</div>
+</div>
+{% else %}
+{% for row in rows %}
+<div class="cv" style="margin-bottom:12px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div>
+      <a href="{% url 'vendor_statement' row.vendor.pk %}" style="font-size:15px;font-weight:700;color:var(--ts);text-decoration:none;">
+        {{ row.vendor.name }}
+      </a>
+      <div style="font-size:11px;color:var(--tm);">{{ row.vendor.phone }}</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:10px;color:var(--tm);text-transform:uppercase;">Owed</div>
+      <div style="font-size:20px;font-weight:700;font-family:'Fraunces',serif;color:#b33a36;">₹{{ row.total_owed|floatformat:0 }}</div>
+    </div>
+  </div>
+  <table class="tv dt hide-mobile" style="width:100%;">
+    <thead><tr><th>GRN</th><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Balance</th><th></th></tr></thead>
+    <tbody>
+      {% for e in row.expenses %}
+      <tr>
+        <td><a href="{% url 'grn_detail' e.stock_in.pk %}" style="color:var(--wood-600);">{{ e.stock_in.grn_number }}</a></td>
+        <td style="color:var(--tm);">{{ e.stock_in.date }}</td>
+        <td><span class="chip">{{ e.get_category_display }}</span></td>
+        <td style="color:var(--tm);">{{ e.description|default:'—' }}</td>
+        <td>₹{{ e.amount|floatformat:0 }}</td>
+        <td style="font-weight:600;color:#b33a36;">₹{{ e.balance|floatformat:0 }}</td>
+        <td><a class="bs" href="{% url 'record_vendor_payment' e.pk %}" style="font-size:12px;">Pay</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="show-mobile">
+    {% for e in row.expenses %}
+    <div class="mc">
+      <div class="mct"><div><div class="mcn">{{ e.get_category_display }}</div><div class="mcs">{{ e.stock_in.grn_number }} · {{ e.stock_in.date }}</div></div></div>
+      <div class="mr"><span class="mrk">Amount</span><span class="mrv">₹{{ e.amount|floatformat:0 }}</span></div>
+      <div class="mr"><span class="mrk">Balance</span><span class="mrv" style="color:#b33a36;font-weight:600;">₹{{ e.balance|floatformat:0 }}</span></div>
+      <div style="margin-top:8px;"><a class="bw" href="{% url 'record_vendor_payment' e.pk %}" style="width:100%;justify-content:center;">Pay</a></div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

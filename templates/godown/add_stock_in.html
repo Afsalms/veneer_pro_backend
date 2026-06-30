@@ -171,6 +171,42 @@
 <script>
 const PRODUCTS    = [{% for p in products %}{id:{{ p.pk }},name:"{{ p.display_name_combined }}",sl:{{ p.sheet_length }},sw:{{ p.sheet_width }}},{% endfor %}];
 const EXP_CATS    = [{% for val, label in landing_categories %}['{{ val }}','{{ label }}'],{% endfor %}];
+let SERVICE_VENDORS = [{% for v in service_vendors %}{id:{{ v.pk }}, name:"{{ v.name|escapejs }}"},{% endfor %}];
+
+async function onExpVendorChange(sel) {
+  if (sel.value !== '__add_new__') return;
+  const name = prompt('New vendor name (e.g. "Raju Transport", "ABC Forklift Co"):');
+  if (!name || !name.trim()) { sel.value = ''; return; }
+  try {
+    const resp = await fetch('/api/quick-add-vendor/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+      },
+      body: 'name=' + encodeURIComponent(name.trim()),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      SERVICE_VENDORS.push({id: data.id, name: data.name});
+      // Update ALL vendor dropdowns on the page with the new option
+      document.querySelectorAll('.exp-vendor-select').forEach(s => {
+        const addNewOpt = s.querySelector('option[value="__add_new__"]');
+        const newOpt = document.createElement('option');
+        newOpt.value = data.id;
+        newOpt.textContent = data.name;
+        s.insertBefore(newOpt, addNewOpt);
+      });
+      sel.value = data.id;
+    } else {
+      await vp.error(data.error || 'Could not add vendor.');
+      sel.value = '';
+    }
+  } catch (e) {
+    await vp.error('Network error — could not add vendor.');
+    sel.value = '';
+  }
+}
 let grnCount = 0, expCount = 0;
 
 // ─────────────────────────────────────────────────────────────────
@@ -301,6 +337,7 @@ function _refreshDelBtns() {
 function addExpRow() {
   expCount++;
   const opts = EXP_CATS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+  const vendorOpts = SERVICE_VENDORS.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
   const row = `
   <div class="line-item" style="margin-bottom:10px;align-items:flex-start;">
     <div style="flex:1;min-width:0;">
@@ -315,12 +352,20 @@ function addExpRow() {
                  placeholder="0" oninput="calcExpTotal()" required>
         </div>
         <div class="fthird">
-          <label class="fl">Paid To</label>
-          <input class="fc" name="exp_paid_to[]" placeholder="Person / company">
+          <label class="fl">Vendor <span style="font-weight:400;color:var(--tm);">(creates payable)</span></label>
+          <select class="fc fsel exp-vendor-select" name="exp_vendor[]" onchange="onExpVendorChange(this)">
+            <option value="">— No vendor (just log expense) —</option>
+            ${vendorOpts}
+            <option value="__add_new__">+ Add new vendor…</option>
+          </select>
         </div>
       </div>
       <div class="frow">
-        <div class="ffull">
+        <div class="fhalf">
+          <label class="fl">Paid To <span style="font-weight:400;color:var(--tm);">(free text, optional)</span></label>
+          <input class="fc exp-paid-to" name="exp_paid_to[]" placeholder="Person / company name">
+        </div>
+        <div class="fhalf">
           <label class="fl">Description</label>
           <input class="fc" name="exp_desc[]" placeholder="Brief note (optional)">
         </div>

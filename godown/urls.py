@@ -64,6 +64,9 @@ urlpatterns = [
     # Payables
     path('payables/',               views.payables,       name='payables'),
     path('payables/pay/<int:pk>/',  views.record_payment, name='record_payment'),
+    path('vendor-payables/',                    views.vendor_payables,        name='vendor_payables'),
+    path('vendor-payables/pay/<int:pk>/',       views.record_vendor_payment,  name='record_vendor_payment'),
+    path('vendor-payables/vendor/<int:pk>/',    views.vendor_statement,       name='vendor_statement'),
 
     # Expenses
     path('expenses/',           views.expenses,      name='expenses'),
@@ -81,6 +84,7 @@ urlpatterns = [
 
     # JSON APIs
     path('api/product/<int:pk>/',   views.product_api,      name='product_api'),
+    path('api/quick-add-vendor/',   views.quick_add_vendor, name='quick_add_vendor'),
     path('api/analytics-data/',     views.analytics_data,   name='analytics_data'),
     path('api/profit-loss/',        views.profit_loss_data, name='profit_loss_data'),
     path('api/daily-cashflow/',     views.daily_cashflow,   name='daily_cashflow'),

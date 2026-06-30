@@ -122,8 +122,15 @@ class UserProfile(models.Model):
 # ─────────────────────────────────────────────────────────────────
 
 class Supplier(models.Model):
+    TYPE_CHOICES = [
+        ('material', 'Material Supplier'),
+        ('service',  'Service Vendor (transport, forklift, labour, etc.)'),
+        ('both',     'Both — Material & Service'),
+    ]
     godown          = models.ForeignKey(Godown, on_delete=models.CASCADE, related_name='suppliers')
     name            = models.CharField(max_length=200)
+    supplier_type   = models.CharField(max_length=10, choices=TYPE_CHOICES, default='material',
+                          help_text='Material suppliers sell veneer stock. Service vendors provide transport, forklift, labour etc.')
     phone           = models.CharField(max_length=20, blank=True)
     city            = models.CharField(max_length=100, blank=True)
     state           = models.CharField(max_length=100, blank=True)
@@ -139,8 +146,35 @@ class Supplier(models.Model):
         return self.name
 
     @property
+    def is_material_supplier(self):
+        return self.supplier_type in ('material', 'both')
+
+    @property
+    def is_service_vendor(self):
+        return self.supplier_type in ('service', 'both')
+
+    @property
     def total_payable(self):
-        return sum(g.balance for g in self.purchase_orders.all())
+        """Material cost owed to this supplier — landing expenses are NOT included.
+        Advance payments are subtracted once per PO (not per GRN, which avoids
+        double-subtracting when a PO splits into multiple partial-delivery GRNs,
+        and correctly counts advances on POs that have no GRN yet)."""
+        grns = self.purchase_orders.all()
+        items_total = sum(g.items_total for g in grns)
+        paid_inr    = sum(g.amount_paid_inr for g in grns)
+        advance_inr = sum(po.advance_paid_inr for po in PurchaseOrder.objects.filter(supplier=self))
+        return items_total - paid_inr - advance_inr
+
+    @property
+    def total_service_payable(self):
+        """Service charges (transport, forklift, labour etc.) owed to this vendor across all GRNs."""
+        from django.db.models import Sum
+        from django.db.models.functions import Coalesce
+        total_amt  = LandingExpense.objects.filter(vendor=self).aggregate(
+            t=Coalesce(Sum('amount'), 0, output_field=models.DecimalField()))['t']
+        total_paid = LandingExpense.objects.filter(vendor=self).aggregate(
+            t=Coalesce(Sum('amount_paid'), 0, output_field=models.DecimalField()))['t']
+        return total_amt - total_paid
 
 
 class Customer(models.Model):
@@ -466,7 +500,16 @@ class StockIn(models.Model):
         return sum(e.amount for e in self.landing_expenses.all())
 
     @property
+    def landing_expenses_paid(self):
+        return sum(e.amount_paid for e in self.landing_expenses.all())
+
+    @property
+    def landing_expenses_balance(self):
+        return self.landing_expenses_total - self.landing_expenses_paid
+
+    @property
     def total_amount(self):
+        """Material + landing expenses combined — used for landed cost calculation only."""
         return self.items_total + self.landing_expenses_total
 
     @property
@@ -477,10 +520,17 @@ class StockIn(models.Model):
         return self.amount_paid
 
     @property
-    def balance(self):
-        """Balance always in INR."""
+    def material_balance(self):
+        """What's owed to the MATERIAL SUPPLIER only — excludes landing expenses
+        which are tracked separately against their own service vendors."""
         advance_inr = self.po.advance_paid_inr if self.po else Decimal('0')
-        return self.total_amount - self.amount_paid_inr - advance_inr
+        return self.items_total - self.amount_paid_inr - advance_inr
+
+    @property
+    def balance(self):
+        """Deprecated alias — kept for backward compatibility with old code/templates.
+        Now points to material_balance only (landing expenses excluded)."""
+        return self.material_balance
 
 
 class StockInItem(models.Model):
@@ -547,10 +597,23 @@ class LandingExpense(models.Model):
     category    = models.CharField(max_length=15, choices=CATEGORY_CHOICES)
     description = models.CharField(max_length=200, blank=True)
     amount      = models.DecimalField(max_digits=10, decimal_places=2)
-    paid_to     = models.CharField(max_length=100, blank=True)
+    paid_to     = models.CharField(max_length=100, blank=True,
+                      help_text='Free-text name — kept for backward compatibility / quick entry without a vendor record.')
+    vendor      = models.ForeignKey(Supplier, on_delete=models.SET_NULL, null=True, blank=True,
+                      related_name='landing_expenses',
+                      help_text='Service vendor this charge is owed to — creates a running payable for them.')
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     def __str__(self):
         return f"{self.get_category_display()} – ₹{self.amount}"
+
+    @property
+    def balance(self):
+        return self.amount - self.amount_paid
+
+    @property
+    def is_paid(self):
+        return self.balance <= Decimal('0.01')
 
 
 def get_fifo_grn(product, qty_needed, godown):
@@ -1021,3 +1084,27 @@ class BankTransaction(models.Model):
     def __str__(self):
         sign = '+' if self.txn_type == 'credit' else '-'
         return f"{sign}₹{self.amount} on {self.date} — {self.description}"
+
+
+class VendorPayment(models.Model):
+    """Individual payment record against a LandingExpense (service vendor charge).
+    Multiple payments can be made against one expense — this preserves each one
+    as a separate ledger entry instead of collapsing into a running total."""
+    PAYMENT_MODE_CHOICES = [
+        ('cash', 'Cash'), ('bank', 'Bank Transfer'),
+        ('upi', 'UPI'), ('cheque', 'Cheque'),
+    ]
+    expense       = models.ForeignKey(LandingExpense, on_delete=models.CASCADE, related_name='payments')
+    date          = models.DateField()
+    amount        = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_mode  = models.CharField(max_length=10, choices=PAYMENT_MODE_CHOICES, default='cash')
+    reference     = models.CharField(max_length=100, blank=True)
+    bank_account  = models.ForeignKey('BankAccount', on_delete=models.SET_NULL, null=True, blank=True)
+    recorded_by   = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at    = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date', 'created_at']
+
+    def __str__(self):
+        return f"₹{self.amount} on {self.date} for {self.expense}"

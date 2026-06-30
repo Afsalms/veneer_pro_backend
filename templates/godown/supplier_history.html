@@ -36,8 +36,10 @@
 
 <!-- Summary Stats -->
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
-  <div class="sc"><div><div class="sl">Total GRNs</div><div class="sv">{{ grn_count }}</div></div></div>
-  <div class="sc"><div><div class="sl">Total Purchased</div><div class="sv">₹{{ total_purchased|floatformat:0 }}</div></div></div>
+  <div class="sc"><div><div class="sl">Total GRNs{% if service_count %} / Service Charges{% endif %}</div><div class="sv">{{ grn_count }}{% if service_count %} / {{ service_count }}{% endif %}</div></div></div>
+  <div class="sc"><div><div class="sl">Material Cost</div><div class="sv">₹{{ total_material_purchased|floatformat:0 }}</div>
+    {% if total_service_billed %}<div class="sc-change" style="color:var(--tm);">+ ₹{{ total_service_billed|floatformat:0 }} service charges</div>{% endif %}
+  </div></div>
   <div class="sc"><div><div class="sl">Total Paid + Advance</div><div class="sv" style="color:#2d6a27;">₹{{ total_credit|floatformat:0 }}</div></div></div>
   <div class="sc"><div>
     <div class="sl">Outstanding</div>
@@ -53,6 +55,11 @@
     </div>
   </div></div>
 </div>
+{% if supplier.supplier_type == 'both' and total_material_purchased and total_service_billed %}
+<div style="background:var(--body-bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--tm);">
+  <i class="bi bi-info-circle"></i> This supplier is marked as <strong>Material & Service</strong> — their total includes both material cost (₹{{ total_material_purchased|floatformat:0 }}) and service charges they performed as a vendor (₹{{ total_service_billed|floatformat:0 }}).
+</div>
+{% endif %}
 
 <!-- Species Breakdown -->
 {% if species_map %}
@@ -88,20 +95,26 @@
     </thead>
     <tbody>
     {% for ev in events %}
-    <tr style="{% if ev.type == 'payment' or ev.type == 'advance' %}background:var(--body-bg);{% endif %}">
+    <tr style="{% if ev.type == 'payment' or ev.type == 'advance' or ev.type == 'service_payment' %}background:var(--body-bg);{% endif %}">
       <td style="color:var(--tm);white-space:nowrap;">{{ ev.date }}</td>
       <td>
         {% if ev.type == 'grn' %}
-          <span class="bv bb" style="font-size:10px;">GRN</span>
+          <span class="bv bb" style="font-size:10px;">GRN (Material)</span>
+        {% elif ev.type == 'service' %}
+          <span class="bv" style="font-size:10px;background:#e8f0fd;color:#2a5aaa;">Service Charge</span>
         {% elif ev.type == 'advance' %}
           <span class="bv bg" style="font-size:10px;">Advance</span>
         {% elif ev.type == 'payment' %}
           <span class="bv bg" style="font-size:10px;">Payment</span>
+        {% elif ev.type == 'service_payment' %}
+          <span class="bv bg" style="font-size:10px;">Service Payment</span>
         {% endif %}
       </td>
       <td>
         {% if ev.type == 'grn' %}
           <a href="{% url 'grn_detail' ev.obj.pk %}" style="font-weight:500;color:var(--wood-600);">{{ ev.ref }}</a>
+        {% elif ev.type == 'service' or ev.type == 'service_payment' %}
+          <a href="{% url 'grn_detail' ev.grn_pk %}" style="font-weight:500;color:var(--wood-600);">{{ ev.ref }}</a>
         {% elif ev.type == 'advance' %}
           <a href="{% url 'po_detail' ev.obj.pk %}" style="font-weight:500;color:var(--wood-600);">{{ ev.ref }}</a>
         {% else %}
@@ -166,8 +179,10 @@
     <div class="mct">
       <div>
         <div class="mcn">
-          {% if ev.type == 'grn' %}📦 {{ ev.ref }}
+          {% if ev.type == 'grn' %}📦 {{ ev.ref }} (Material)
+          {% elif ev.type == 'service' %}🚚 Service Charge — {{ ev.ref }}
           {% elif ev.type == 'advance' %}💰 Advance — {{ ev.ref }}
+          {% elif ev.type == 'service_payment' %}✅ Service Payment — {{ ev.ref }}
           {% else %}✅ Payment — {{ ev.ref }}{% endif %}
         </div>
         <div class="mcs">{{ ev.date }} · {{ ev.note }}</div>

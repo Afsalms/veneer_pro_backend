@@ -8,18 +8,21 @@
   <div class="sc"><div><div class="sl">Paid This Month</div><div class="sv" style="color:#2d6a27;">₹{{ paid_month|floatformat:0 }}</div></div></div>
 </div>
 <div class="cv">
-  <div class="ch"><h6>Outstanding Payables</h6></div>
-  <table class="tv dt"><thead><tr><th>Supplier</th><th>GRN No</th><th>Date</th><th>Total</th><th>Balance</th><th>Status</th><th></th></tr></thead>
+  <div class="ch"><h6>Outstanding Payables — Material Suppliers</h6>
+    <a class="bs" href="{% url 'vendor_payables' %}" style="font-size:12px;"><i class="bi bi-truck"></i> Service Vendor Payables</a>
+  </div>
+  <div style="font-size:11px;color:var(--tm);padding:0 16px 8px;">Shows material cost owed only. Transport, forklift, and labour charges are tracked separately under <a href="{% url 'vendor_payables' %}" style="color:var(--wood-600);">Service Vendor Payables</a>.</div>
+  <table class="tv dt"><thead><tr><th>Supplier</th><th>GRN No</th><th>Date</th><th>Material Cost</th><th>Balance</th><th>Status</th><th></th></tr></thead>
   <tbody>{% for g in outstanding %}
   <tr><td style="font-weight:500;">{{ g.supplier.name }}</td><td style="color:var(--wood-600);">{{ g.grn_number }}</td>
-  <td style="color:var(--tm);">{{ g.date }}</td><td>₹{{ g.total_amount|floatformat:0 }}</td>
+  <td style="color:var(--tm);">{{ g.date }}</td><td>₹{{ g.items_total|floatformat:0 }}</td>
   <td style="font-weight:600;color:#b33a36;">₹{{ g.balance|floatformat:0 }}</td>
   <td><span class="bv ba">Pending</span></td>
   <td><a class="bs" href="{% url 'record_payment' g.pk %}">Pay</a></td></tr>
   {% empty %}<tr><td colspan="7" style="text-align:center;color:var(--tm);padding:30px;">No outstanding payables.</td></tr>{% endfor %}</tbody></table>
   <div class="ml">{% for g in outstanding %}
   <div class="mc"><div class="mct"><div><div class="mcn">{{ g.supplier.name }}</div><div class="mcs">{{ g.grn_number }} · {{ g.date }}</div></div><span class="bv ba">Pending</span></div>
-  <div class="mr"><span class="mrk">Total</span><span class="mrv">₹{{ g.total_amount|floatformat:0 }}</span></div>
+  <div class="mr"><span class="mrk">Material Cost</span><span class="mrv">₹{{ g.items_total|floatformat:0 }}</span></div>
   <div class="mr"><span class="mrk">Balance</span><span class="mrv" style="color:#b33a36;font-weight:600;">₹{{ g.balance|floatformat:0 }}</span></div>
   <div style="margin-top:10px;"><a class="bw" href="{% url 'record_payment' g.pk %}" style="width:100%;justify-content:center;">Record Payment</a></div></div>
   {% endfor %}</div>

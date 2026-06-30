@@ -47,7 +47,7 @@ from .models import (
     Sale, SaleItem, Expense, Payment, StockAlert,
     Estimation, EstimationItem,
     LookupValue, LookupCategory,
-    StockDamage, BankAccount, BankTransaction,
+    StockDamage, BankAccount, BankTransaction, VendorPayment,
     get_fifo_grn,
 )
 
@@ -589,31 +589,41 @@ def suppliers(request):
     from django.db.models import Count, DecimalField, Sum, ExpressionWrapper, F
     from django.db.models.functions import Coalesce
     godown = get_godown(request)
-    # Payable = GRN items + landing - GRN payments (INR) - PO advances (INR)
-    # Note: exchange rates mean we can't do this purely in SQL — compute in Python
+    supplier_type_filter = request.GET.get('type', '')
     suppliers_qs = Supplier.objects.filter(godown=godown).annotate(
         grn_count=Count('purchase_orders', distinct=True),
     ).order_by('name')
-    # Attach accurate payable using Python (handles currency conversion correctly)
+    if supplier_type_filter in ('material', 'service', 'both'):
+        suppliers_qs = suppliers_qs.filter(supplier_type=supplier_type_filter)
+
     from godown.models import StockIn as _SI, PurchaseOrder as _PO
     for sup in suppliers_qs:
-        grns = _SI.objects.filter(supplier=sup, godown=godown).prefetch_related('items','landing_expenses')
+        # Material payable — items only, never landing expenses
+        grns = _SI.objects.filter(supplier=sup, godown=godown).prefetch_related('items')
         pos  = _PO.objects.filter(supplier=sup, godown=godown)
-        items_total   = sum(i.amount for g in grns for i in g.items.all())
-        landing_total = sum(e.amount for g in grns for e in g.landing_expenses.all())
-        paid_inr      = sum(g.amount_paid_inr for g in grns)
-        advance_inr   = sum(p.advance_paid_inr for p in pos)
-        # Keep actual value — negative means supplier owes us (over-paid / advance credit)
-        sup.db_total_payable = items_total + landing_total - paid_inr - advance_inr
+        items_total = sum(i.amount for g in grns for i in g.items.all())
+        paid_inr    = sum(g.amount_paid_inr for g in grns)
+        advance_inr = sum(p.advance_paid_inr for p in pos)
+        sup.db_total_payable = items_total - paid_inr - advance_inr
+
+        # Service payable — landing expenses where this supplier is the vendor
+        sup.db_service_payable = sup.total_service_payable
+
+        # Combined — what shows in the main Payable column
+        sup.db_combined_payable = sup.db_total_payable + sup.db_service_payable
+
     used_supplier_pks = set(
         StockIn.objects.filter(godown=godown).values_list('supplier_id', flat=True)
     ) | set(
         PurchaseOrder.objects.filter(godown=godown).values_list('supplier_id', flat=True)
+    ) | set(
+        LandingExpense.objects.filter(stock_in__godown=godown).exclude(vendor=None).values_list('vendor_id', flat=True)
     )
     return render(request, 'godown/suppliers.html', ctx(request, {
         'active':'suppliers',
         'suppliers': suppliers_qs,
         'used_pks': used_supplier_pks,
+        'supplier_type_filter': supplier_type_filter,
     }))
 
 @login_req
@@ -621,6 +631,7 @@ def add_supplier(request):
     godown = get_godown(request)
     if request.method == 'POST':
         Supplier.objects.create(godown=godown, name=request.POST['name'],
+            supplier_type=request.POST.get('supplier_type', 'material'),
             phone=request.POST.get('phone',''), city=request.POST.get('city',''),
             state=request.POST.get('state',''), gst_number=request.POST.get('gst_number',''),
             address=request.POST.get('address',''), species_supplied=request.POST.get('species_supplied',''))
@@ -633,7 +644,8 @@ def edit_supplier(request, pk):
     godown = get_godown(request)
     s = get_object_or_404(Supplier, pk=pk, godown=godown)
     if request.method == 'POST':
-        s.name=request.POST['name']; s.phone=request.POST.get('phone','')
+        s.name=request.POST['name']; s.supplier_type=request.POST.get('supplier_type', s.supplier_type)
+        s.phone=request.POST.get('phone','')
         s.city=request.POST.get('city',''); s.state=request.POST.get('state','')
         s.gst_number=request.POST.get('gst_number',''); s.address=request.POST.get('address','')
         s.species_supplied=request.POST.get('species_supplied',''); s.save()
@@ -793,7 +805,7 @@ def po_list(request):
 @login_req
 def add_po(request):
     godown = get_godown(request)
-    suppliers_list = Supplier.objects.filter(godown=godown)
+    suppliers_list = Supplier.objects.filter(godown=godown, supplier_type__in=['material','both'])
     products_list  = Product.objects.filter(godown=godown)
     if request.method == 'POST':
         # ── Parse items (same logic as _save_po_items) ───────────
@@ -927,7 +939,7 @@ def edit_po(request, pk):
         PurchaseOrder.objects.prefetch_related('po_items__product', 'grns__items'),
         pk=pk, godown=godown)
     products_list  = Product.objects.filter(godown=godown)
-    suppliers_list = Supplier.objects.filter(godown=godown)
+    suppliers_list = Supplier.objects.filter(godown=godown, supplier_type__in=['material','both'])
 
     # Build received qty map: product_pk → total qty received via GRNs against this PO
     received_qty = {}
@@ -1071,7 +1083,7 @@ def stock_in_list(request):
 @login_req
 def add_stock_in(request):
     godown = get_godown(request)
-    suppliers_list = Supplier.objects.filter(godown=godown)
+    suppliers_list = Supplier.objects.filter(godown=godown, supplier_type__in=['material','both'])
     products_list  = Product.objects.filter(godown=godown)
     open_pos       = PurchaseOrder.objects.filter(godown=godown, status__in=['pending','partial']).select_related('supplier')
     if request.method == 'POST':
@@ -1108,6 +1120,7 @@ def add_stock_in(request):
                 'active':'stock_in','suppliers':suppliers_list,'products':products_list,
                 'open_pos':open_pos,
                 'landing_categories': LookupValue.choices_for(godown, 'landing_expense_category'),
+                'service_vendors': Supplier.objects.filter(godown=godown, supplier_type__in=['service','both']),
             }))
 
         # ── Preview ───────────────────────────────────────────────
@@ -1115,8 +1128,9 @@ def add_stock_in(request):
             supplier = suppliers_list.get(pk=request.POST['supplier'])
             items_total = sum(q*r for p,q,r in line_items)
             # Landing expenses
-            exp_cats = request.POST.getlist('exp_cat[]')
-            exp_amts = request.POST.getlist('exp_amt[]')
+            exp_cats    = request.POST.getlist('exp_cat[]')
+            exp_amts    = request.POST.getlist('exp_amt[]')
+            exp_vendors = request.POST.getlist('exp_vendor[]')
             landing_total = Decimal('0')
             landing_rows  = []
             for j, cat in enumerate(exp_cats):
@@ -1126,7 +1140,12 @@ def add_stock_in(request):
                 except: continue
                 if amt <= 0: continue
                 landing_total += amt
-                landing_rows.append([cat, '', '', f'₹{amt:,.2f}'])
+                vendor_id = exp_vendors[j] if j < len(exp_vendors) else ''
+                vendor_label = ''
+                if vendor_id:
+                    try: vendor_label = f' → {Supplier.objects.get(pk=vendor_id).name}'
+                    except: pass
+                landing_rows.append([f'{cat}{vendor_label}', '', '', f'₹{amt:,.2f}'])
             grand = items_total + landing_total
             amtp  = Decimal(request.POST.get('amount_paid',0) or 0)
             header = [
@@ -1188,6 +1207,7 @@ def add_stock_in(request):
     return render(request, 'godown/add_stock_in.html', ctx(request, {
         'active':'stock_in','suppliers':suppliers_list,'products':products_list,'open_pos':open_pos,
         'landing_categories': LookupValue.choices_for(godown, 'landing_expense_category'),
+        'service_vendors': Supplier.objects.filter(godown=godown, supplier_type__in=['service','both']),
     }))
 
 def _save_grn_items(request, grn, products_list):
@@ -1232,13 +1252,21 @@ def _save_grn_items(request, grn, products_list):
     return created
 
 def _save_landing_expenses(request, grn):
-    for cat, desc, amt, paid_to in zip(
-        request.POST.getlist('exp_cat[]'), request.POST.getlist('exp_desc[]'),
-        request.POST.getlist('exp_amt[]'), request.POST.getlist('exp_paid_to[]'),
-    ):
+    cats     = request.POST.getlist('exp_cat[]')
+    descs    = request.POST.getlist('exp_desc[]')
+    amts     = request.POST.getlist('exp_amt[]')
+    paid_tos = request.POST.getlist('exp_paid_to[]')
+    vendors  = request.POST.getlist('exp_vendor[]')
+    for i, (cat, amt) in enumerate(zip(cats, amts)):
         if cat and amt:
-            LandingExpense.objects.create(stock_in=grn, category=cat, description=desc,
-                                          amount=Decimal(amt), paid_to=paid_to)
+            desc    = descs[i]    if i < len(descs)    else ''
+            paid_to = paid_tos[i] if i < len(paid_tos) else ''
+            vendor_id = vendors[i] if i < len(vendors) else ''
+            LandingExpense.objects.create(
+                stock_in=grn, category=cat, description=desc,
+                amount=Decimal(amt), paid_to=paid_to,
+                vendor_id=vendor_id if vendor_id else None,
+            )
 
 def _recalc_landed_rates(grn, si_items):
     total_landing = grn.landing_expenses_total
@@ -2649,8 +2677,9 @@ def lookup_api(request, category):
 def edit_grn(request, pk):
     godown = get_godown(request)
     grn = get_object_or_404(StockIn.objects.prefetch_related('items__product','landing_expenses'), pk=pk, godown=godown)
-    suppliers_list = Supplier.objects.filter(godown=godown)
+    suppliers_list = Supplier.objects.filter(godown=godown, supplier_type__in=['material','both'])
     products_list  = Product.objects.filter(godown=godown)
+    service_vendors = Supplier.objects.filter(godown=godown, supplier_type__in=['service','both'])
 
     if request.method == 'POST':
         errors = []
@@ -2697,11 +2726,25 @@ def edit_grn(request, pk):
                         f'{sold_from_grn:.4f} sq.m has already been sold from this GRN.'
                     )
 
+        # Block edit if any landing expense already has a payment recorded —
+        # editing would silently delete that payment history.
+        paid_expenses = grn.landing_expenses.filter(amount_paid__gt=0)
+        if paid_expenses.exists():
+            names = ', '.join(
+                f'{e.vendor.name if e.vendor else e.paid_to or "Unknown vendor"} (₹{e.amount_paid:,.0f} paid)'
+                for e in paid_expenses
+            )
+            errors.append(
+                f'Cannot edit items/expenses — payment already recorded against: {names}. '
+                f'Settle those vendor payments first before editing this GRN.'
+            )
+
         if errors:
             for err in errors: messages.error(request, err)
             return render(request, 'godown/edit_grn.html', ctx(request, {
                 'active': 'stock_in', 'grn': grn,
                 'suppliers': suppliers_list, 'products': products_list,
+                'service_vendors': service_vendors,
                 'form_errors': errors,
             }))
 
@@ -2732,10 +2775,11 @@ def edit_grn(request, pk):
                 )
                 si_items.append(si)
             # Landing expenses
-            exp_cats  = request.POST.getlist('exp_cat[]')
-            exp_amts  = request.POST.getlist('exp_amt[]')
-            exp_paids = request.POST.getlist('exp_paid_to[]')
-            exp_descs = request.POST.getlist('exp_desc[]')
+            exp_cats    = request.POST.getlist('exp_cat[]')
+            exp_amts    = request.POST.getlist('exp_amt[]')
+            exp_paids   = request.POST.getlist('exp_paid_to[]')
+            exp_descs   = request.POST.getlist('exp_desc[]')
+            exp_vendors = request.POST.getlist('exp_vendor[]')
             total_landing = Decimal('0')
             for j, cat in enumerate(exp_cats):
                 amt_str = exp_amts[j] if j < len(exp_amts) else ''
@@ -2743,10 +2787,12 @@ def edit_grn(request, pk):
                 try: amt = Decimal(amt_str)
                 except: continue
                 if amt <= 0: continue
+                vendor_id = exp_vendors[j] if j < len(exp_vendors) else ''
                 LandingExpense.objects.create(
                     stock_in=grn, category=cat, amount=amt,
                     paid_to=exp_paids[j] if j < len(exp_paids) else '',
                     description=exp_descs[j] if j < len(exp_descs) else '',
+                    vendor_id=vendor_id if vendor_id else None,
                 )
                 total_landing += amt
             if si_items and total_landing > 0:
@@ -2762,6 +2808,7 @@ def edit_grn(request, pk):
     return render(request, 'godown/edit_grn.html', ctx(request, {
         'active': 'stock_in', 'grn': grn,
         'suppliers': suppliers_list, 'products': products_list,
+        'service_vendors': service_vendors,
     }))
 
 
@@ -2910,8 +2957,14 @@ def delete_customer(request, pk):
 def delete_supplier(request, pk):
     godown = get_godown(request)
     s = get_object_or_404(Supplier, pk=pk, godown=godown)
-    if StockIn.objects.filter(supplier=s, godown=godown).exists() or PurchaseOrder.objects.filter(supplier=s, godown=godown).exists():
-        messages.error(request, f'Cannot delete "{s.name}" — they have purchase records.')
+    has_purchase_records = StockIn.objects.filter(supplier=s, godown=godown).exists() or \
+                            PurchaseOrder.objects.filter(supplier=s, godown=godown).exists()
+    has_service_records  = LandingExpense.objects.filter(vendor=s, stock_in__godown=godown).exists()
+    if has_purchase_records or has_service_records:
+        reason = []
+        if has_purchase_records: reason.append('purchase records')
+        if has_service_records:  reason.append('service charge records')
+        messages.error(request, f'Cannot delete "{s.name}" — they have {" and ".join(reason)}.')
     elif request.method == 'POST':
         name = s.name; s.delete()
         messages.success(request, f'Supplier "{name}" deleted.')
@@ -2939,6 +2992,11 @@ def supplier_history(request, pk):
                .prefetch_related('po_items__product').order_by('date')
     grns = StockIn.objects.filter(supplier=supplier, godown=godown)\
                .prefetch_related('items__product','landing_expenses').order_by('date')
+    # Landing expenses where THIS supplier is the service vendor (may be a
+    # different GRN's supplier, or the same one if supplier_type='both')
+    vendor_expenses = LandingExpense.objects.filter(
+        vendor=supplier, stock_in__godown=godown
+    ).select_related('stock_in').prefetch_related('payments').order_by('stock_in__date')
 
     # Build chronological ledger
     # Each row: date, type, ref, debit (what we owe), credit (what we paid), balance
@@ -2961,21 +3019,23 @@ def supplier_history(request, pk):
             })
 
     for grn in grns:
-        # GRN arrival = we owe money (debit)
-        events.append({
-            'date':   grn.date,
-            'sort':   grn.date,
-            'type':   'grn',
-            'ref':    grn.grn_number,
-            'note':   f'{grn.items.count()} item(s) · {grn.get_payment_mode_display()}',
-            'debit':  grn.total_amount,
-            'credit': Decimal('0'),
-            'obj':    grn,
-            'currency': grn.payment_currency,
-            'foreign_amt': None,
-            'exchange_rate': None,
-        })
-        # GRN payment = we paid (credit)
+        # GRN arrival = we owe money for MATERIAL ONLY (debit) — landing expenses
+        # are tracked separately against their own service vendor, never here.
+        if grn.items_total > 0:
+            events.append({
+                'date':   grn.date,
+                'sort':   grn.date,
+                'type':   'grn',
+                'ref':    grn.grn_number,
+                'note':   f'{grn.items.count()} item(s) · {grn.get_payment_mode_display()} (material only)',
+                'debit':  grn.items_total,
+                'credit': Decimal('0'),
+                'obj':    grn,
+                'currency': grn.payment_currency,
+                'foreign_amt': None,
+                'exchange_rate': None,
+            })
+        # GRN payment = we paid (credit) — payment against material cost
         if grn.amount_paid_inr > 0:
             events.append({
                 'date':   grn.date,
@@ -2991,8 +3051,43 @@ def supplier_history(request, pk):
                 'exchange_rate': grn.exchange_rate if grn.payment_currency == 'USD' else None,
             })
 
-    # Sort by date then type (grn before payment on same day)
-    type_order = {'advance': 0, 'grn': 1, 'payment': 2}
+    # Service charges where this supplier is the vendor (transport, forklift etc.)
+    for exp in vendor_expenses:
+        events.append({
+            'date':   exp.stock_in.date,
+            'sort':   exp.stock_in.date,
+            'type':   'service',
+            'ref':    exp.stock_in.grn_number,
+            'note':   f'{exp.get_category_display()}{" — " + exp.description if exp.description else ""}',
+            'debit':  exp.amount,
+            'credit': Decimal('0'),
+            'obj':    exp,
+            'grn_pk': exp.stock_in.pk,
+            'currency': 'INR',
+            'foreign_amt': None,
+            'exchange_rate': None,
+        })
+        # Each individual payment gets its own ledger row — not collapsed into one total
+        for vp in exp.payments.all():
+            events.append({
+                'date':   vp.date,
+                'sort':   vp.date,
+                'type':   'service_payment',
+                'ref':    exp.stock_in.grn_number,
+                'note':   f'Payment for {exp.get_category_display()} — {exp.stock_in.grn_number}'
+                          f'{" · " + vp.get_payment_mode_display() if vp.payment_mode else ""}'
+                          f'{" · Ref: " + vp.reference if vp.reference else ""}',
+                'debit':  Decimal('0'),
+                'credit': vp.amount,
+                'obj':    vp,
+                'grn_pk': exp.stock_in.pk,
+                'currency': 'INR',
+                'foreign_amt': None,
+                'exchange_rate': None,
+            })
+
+    # Sort by date then type (grn/service before payment on same day)
+    type_order = {'advance': 0, 'grn': 1, 'service': 1, 'payment': 2, 'service_payment': 2}
     events.sort(key=lambda e: (e['sort'], type_order.get(e['type'], 9)))
 
     # Compute running balance
@@ -3001,14 +3096,19 @@ def supplier_history(request, pk):
         running += ev['debit'] - ev['credit']
         ev['balance'] = running
 
-    # Summary — compute totals properly
-    total_purchased = sum(g.total_amount for g in grns)
-    total_paid_inr  = sum(g.amount_paid_inr for g in grns)
-    total_advance   = sum(p.advance_paid_inr for p in pos)
-    total_credit    = total_paid_inr + total_advance   # total money we paid/advanced
-    outstanding     = total_purchased - total_credit    # positive = we owe, negative = they owe us (advance credit)
+    # Summary — material cost and service charges tracked separately, combined for this supplier's total view
+    total_material_purchased = sum(g.items_total for g in grns)
+    total_material_paid_inr  = sum(g.amount_paid_inr for g in grns)
+    total_advance            = sum(p.advance_paid_inr for p in pos)
+    total_service_billed     = sum(e.amount for e in vendor_expenses)
+    total_service_paid       = sum(e.amount_paid for e in vendor_expenses)
 
-    # Species breakdown
+    total_purchased = total_material_purchased + total_service_billed
+    total_credit    = total_material_paid_inr + total_advance + total_service_paid
+    outstanding     = total_purchased - total_credit
+    # positive = we owe, negative = they owe us (advance credit)
+
+    # Species breakdown (material purchases only)
     from collections import defaultdict
     species_map = defaultdict(lambda: {'qty': Decimal('0'), 'amount': Decimal('0')})
     for grn in grns:
@@ -3022,14 +3122,18 @@ def supplier_history(request, pk):
         'events':          events,
         'pos':             pos,
         'grns':            grns,
+        'vendor_expenses': vendor_expenses,
         'total_purchased': total_purchased,
-        'total_paid_inr':  total_paid_inr,
+        'total_material_purchased': total_material_purchased,
+        'total_service_billed':     total_service_billed,
+        'total_paid_inr':  total_material_paid_inr,
         'total_advance':   total_advance,
         'total_credit':    total_credit,
         'outstanding':     outstanding,
         'species_map':     dict(species_map),
         'grn_count':       grns.count(),
         'po_count':        pos.count(),
+        'service_count':   vendor_expenses.count(),
     }))
 
 
@@ -3571,3 +3675,132 @@ def add_bank_transaction(request, pk):
     return render(request, 'godown/add_bank_transaction.html', ctx(request, {
         'active': 'bank', 'account': account,
     }))
+
+
+# ── Service Vendor Payables (transport, forklift, labour etc.) ─────
+@login_req
+def vendor_payables(request):
+    godown = get_godown(request)
+    today  = timezone.now().date()
+    vendors = Supplier.objects.filter(godown=godown, supplier_type__in=['service', 'both'])
+    rows = []
+    for v in vendors:
+        expenses = LandingExpense.objects.filter(vendor=v, stock_in__godown=godown).select_related('stock_in')
+        outstanding_expenses = [e for e in expenses if e.balance > 0]
+        if outstanding_expenses:
+            rows.append({
+                'vendor': v,
+                'expenses': outstanding_expenses,
+                'total_owed': sum(e.balance for e in outstanding_expenses),
+            })
+    total_payable = sum(r['total_owed'] for r in rows)
+    overdue_amount = sum(
+        e.balance for r in rows for e in r['expenses']
+        if e.stock_in.date + timedelta(days=30) < today
+    )
+    paid_month = LandingExpense.objects.filter(
+        vendor__godown=godown, stock_in__date__month=today.month
+    ).aggregate(t=db_models.Sum('amount_paid'))['t'] or Decimal('0')
+    return render(request, 'godown/vendor_payables.html', ctx(request, {
+        'active': 'vendor_payables',
+        'rows': rows,
+        'total_payable': total_payable,
+        'overdue_amount': overdue_amount,
+        'paid_month': paid_month,
+    }))
+
+
+@login_req
+def record_vendor_payment(request, pk):
+    """Record a payment against a specific landing expense (service charge)."""
+    godown = get_godown(request)
+    expense = get_object_or_404(
+        LandingExpense.objects.select_related('stock_in', 'vendor'),
+        pk=pk, stock_in__godown=godown
+    )
+    bank_accounts_qs = BankAccount.objects.filter(godown=godown, is_active=True)
+    if request.method == 'POST':
+        amt             = Decimal(request.POST.get('amount', 0) or 0)
+        bank_account_id = request.POST.get('bank_account') or None
+        reference       = request.POST.get('reference', '')
+        date            = request.POST.get('date', str(timezone.now().date()))
+        mode            = request.POST.get('payment_mode', 'cash')
+        if amt <= 0:
+            messages.error(request, 'Enter a valid payment amount.')
+            return render(request, 'godown/record_vendor_payment.html', ctx(request, {
+                'active': 'vendor_payables', 'expense': expense, 'bank_accounts': bank_accounts_qs,
+            }))
+        if amt > expense.balance + Decimal('0.01'):
+            messages.error(request, f'Amount exceeds balance owed (₹{expense.balance:,.2f}).')
+            return render(request, 'godown/record_vendor_payment.html', ctx(request, {
+                'active': 'vendor_payables', 'expense': expense, 'bank_accounts': bank_accounts_qs,
+            }))
+        expense.amount_paid += amt
+        expense.save(update_fields=['amount_paid'])
+
+        vendor_bank_acc = None
+        if bank_account_id:
+            try:
+                vendor_bank_acc = BankAccount.objects.get(pk=bank_account_id, godown=godown)
+            except BankAccount.DoesNotExist:
+                pass
+        VendorPayment.objects.create(
+            expense=expense, date=date, amount=amt,
+            payment_mode=mode, reference=reference,
+            bank_account=vendor_bank_acc, recorded_by=request.user,
+        )
+
+        if bank_account_id and mode != 'cash':
+            try:
+                bank_acc = BankAccount.objects.get(pk=bank_account_id, godown=godown)
+                BankTransaction.objects.create(
+                    account=bank_acc, date=date, txn_type='debit',
+                    category='supplier_payment', amount=amt,
+                    description=f'Payment to {expense.vendor.name} — {expense.get_category_display()} ({expense.stock_in.grn_number})',
+                    reference=reference, recorded_by=request.user,
+                )
+            except BankAccount.DoesNotExist:
+                pass
+
+        messages.success(request, f'Payment of ₹{amt:,.0f} recorded for {expense.vendor.name}.')
+        return redirect('vendor_payables')
+    return render(request, 'godown/record_vendor_payment.html', ctx(request, {
+        'active': 'vendor_payables', 'expense': expense, 'bank_accounts': bank_accounts_qs,
+    }))
+
+
+@login_req
+def vendor_statement(request, pk):
+    godown = get_godown(request)
+    vendor = get_object_or_404(Supplier, pk=pk, godown=godown)
+    expenses = LandingExpense.objects.filter(vendor=vendor, stock_in__godown=godown).select_related('stock_in').prefetch_related('payments').order_by('-stock_in__date')
+    total_billed = sum(e.amount for e in expenses)
+    total_paid   = sum(e.amount_paid for e in expenses)
+    return render(request, 'godown/vendor_statement.html', ctx(request, {
+        'active': 'vendor_payables', 'vendor': vendor, 'expenses': expenses,
+        'total_billed': total_billed, 'total_paid': total_paid,
+        'total_outstanding': total_billed - total_paid,
+    }))
+
+
+# ── Quick-add Service Vendor (inline from GRN landing expense row) ──
+@login_req
+def quick_add_vendor(request):
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+    godown = get_godown(request)
+    name = request.POST.get('name', '').strip()
+    if not name or len(name) < 2:
+        return JsonResponse({'ok': False, 'error': 'Vendor name must be at least 2 characters.'}, status=400)
+    if len(name) > 200:
+        return JsonResponse({'ok': False, 'error': 'Vendor name is too long.'}, status=400)
+    # Avoid exact-duplicate service vendors within the same godown
+    existing = Supplier.objects.filter(
+        godown=godown, name__iexact=name, supplier_type__in=['service', 'both']
+    ).first()
+    if existing:
+        return JsonResponse({'ok': True, 'id': existing.pk, 'name': existing.name})
+    vendor = Supplier.objects.create(
+        godown=godown, name=name, supplier_type='service',
+    )
+    return JsonResponse({'ok': True, 'id': vendor.pk, 'name': vendor.name})

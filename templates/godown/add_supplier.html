@@ -22,6 +22,19 @@ $(function(){
 <form method="post" id="supplier-form" novalidate>{% csrf_token %}
 <div class="cv">
   <div class="frow"><div class="fhalf"><label class="fl">Supplier Name *</label><input class="fc" name="name" value="{{ supplier.name|default:'' }}" required placeholder="Company name"></div><div class="fhalf"><label class="fl">Phone</label><input class="fc" name="phone" value="{{ supplier.phone|default:'' }}" placeholder="+91 00000 00000"></div></div>
+  <div class="frow">
+    <div class="ffull">
+      <label class="fl">Type *</label>
+      <select class="fc fsel" name="supplier_type">
+        <option value="material" {% if not supplier or supplier.supplier_type == 'material' %}selected{% endif %}>Material Supplier — sells veneer stock</option>
+        <option value="service"  {% if supplier.supplier_type == 'service' %}selected{% endif %}>Service Vendor — transport, forklift, labour, etc.</option>
+        <option value="both"     {% if supplier.supplier_type == 'both' %}selected{% endif %}>Both — Material & Service</option>
+      </select>
+      <div style="font-size:11px;color:var(--tm);margin-top:4px;">
+        Material suppliers appear in Purchase Orders & GRN supplier list. Service vendors appear in the landing-expense vendor dropdown on GRN.
+      </div>
+    </div>
+  </div>
   <div class="frow"><div class="fhalf"><label class="fl">City</label><input class="fc" name="city" value="{{ supplier.city|default:'' }}" placeholder="Mumbai"></div><div class="fhalf"><label class="fl">State</label><input class="fc" name="state" value="{{ supplier.state|default:'' }}" placeholder="Maharashtra"></div></div>
   <div class="frow"><div class="fhalf"><label class="fl">Species Supplied</label><input class="fc" name="species_supplied" value="{{ supplier.species_supplied|default:'' }}" placeholder="Teak, Oak, Walnut…"></div><div class="fhalf"><label class="fl">GST Number</label><input class="fc" name="gst_number" value="{{ supplier.gst_number|default:'' }}" placeholder="Optional"></div></div>
   <div class="frow"><div class="ffull"><label class="fl">Address</label><textarea class="fc" name="address" placeholder="Full address">{{ supplier.address|default:'' }}</textarea></div></div>

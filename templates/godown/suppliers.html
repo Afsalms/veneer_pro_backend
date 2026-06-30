@@ -10,14 +10,17 @@
   <tbody>{% for s in suppliers %}
   <tr><td><div style="font-weight:500;">{{ s.name }}</div><div style="font-size:11px;color:var(--tm);">{{ s.city }}, {{ s.state }}</div></td>
   <td>{{ s.phone }}</td><td>{{ s.city }}</td><td>{% for sp in s.species_supplied.split %}<span class="chip">{{ sp }}</span> {% endfor %}</td>
-  <td style="font-weight:500;color:{% if s.db_total_payable > 0 %}#b33a36{% elif s.db_total_payable < 0 %}#2d6a27{% endif %};">
-      {% if s.db_total_payable < 0 %}
-        <span title="Supplier owes you (overpaid/advance credit)">(Cr) ₹{{ s.db_total_payable|stringformat:".0f"|slice:"1:" }}</span>
+  <td style="font-weight:500;color:{% if s.db_combined_payable > 0 %}#b33a36{% elif s.db_combined_payable < 0 %}#2d6a27{% endif %};">
+      {% if s.db_combined_payable < 0 %}
+        <span title="Supplier owes you (overpaid/advance credit)">(Cr) ₹{{ s.db_combined_payable|stringformat:".0f"|slice:"1:" }}</span>
       {% else %}
-        ₹{{ s.db_total_payable|floatformat:0 }}
+        ₹{{ s.db_combined_payable|floatformat:0 }}
+      {% endif %}
+      {% if s.db_total_payable and s.db_service_payable %}
+      <div style="font-size:10px;color:var(--tm);font-weight:400;margin-top:2px;">₹{{ s.db_total_payable|floatformat:0 }} material + ₹{{ s.db_service_payable|floatformat:0 }} service</div>
       {% endif %}
     </td>
-  <td><span class="bv {% if s.db_total_payable > 0 %}ba{% else %}bg{% endif %}">{% if s.db_total_payable > 0 %}Dues Pending{% else %}Clear{% endif %}</span></td>
+  <td><span class="bv {% if s.db_combined_payable > 0 %}ba{% else %}bg{% endif %}">{% if s.db_combined_payable > 0 %}Dues Pending{% else %}Clear{% endif %}</span></td>
   <td><div style="display:flex;gap:6px;align-items:center;">
     <a class="bs" href="{% url 'supplier_history' s.pk %}"><i class="bi bi-clock-history"></i> History</a>
     <a class="bs" href="{% url 'edit_supplier' s.pk %}"><i class="bi bi-pencil"></i> Edit</a>
@@ -29,6 +32,6 @@
   </div></td></tr>
   {% empty %}<tr><td colspan="7" style="text-align:center;color:var(--tm);padding:30px;">No suppliers yet.</td></tr>{% endfor %}</tbody></table>
   <div class="ml">{% for s in suppliers %}
-  <div class="mc"><div class="mct"><div><div class="mcn">{{ s.name }}</div><div class="mcs">{{ s.city }}, {{ s.state }} · {{ s.phone }}</div></div><span class="bv {% if s.db_total_payable > 0 %}ba{% else %}bg{% endif %}">{% if s.db_total_payable > 0 %}Dues{% else %}Clear{% endif %}</span></div><div class="mr"><span class="mrk">Species</span><span class="mrv">{{ s.species_supplied }}</span></div><div class="mr"><span class="mrk">Payable</span><span class="mrv" style="{% if s.db_total_payable > 0 %}color:#b33a36;{% endif %}">₹{{ s.db_total_payable|floatformat:0 }}</span></div></div>
+  <div class="mc"><div class="mct"><div><div class="mcn">{{ s.name }}</div><div class="mcs">{{ s.city }}, {{ s.state }} · {{ s.phone }}</div></div><span class="bv {% if s.db_combined_payable > 0 %}ba{% else %}bg{% endif %}">{% if s.db_combined_payable > 0 %}Dues{% else %}Clear{% endif %}</span></div><div class="mr"><span class="mrk">Species</span><span class="mrv">{{ s.species_supplied }}</span></div><div class="mr"><span class="mrk">Payable</span><span class="mrv" style="{% if s.db_combined_payable > 0 %}color:#b33a36;{% endif %}">₹{{ s.db_combined_payable|floatformat:0 }}</span></div>{% if s.db_total_payable and s.db_service_payable %}<div class="mr"><span class="mrk">Breakdown</span><span class="mrv" style="font-size:11px;color:var(--tm);">₹{{ s.db_total_payable|floatformat:0 }} material + ₹{{ s.db_service_payable|floatformat:0 }} service</span></div>{% endif %}</div>
   {% endfor %}</div>
 </div>{% endblock %}
