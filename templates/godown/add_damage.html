@@ -29,7 +29,7 @@
         <option value="">Select product</option>
         {% for p in products %}
         <option value="{{ p.pk }}" data-stock="{{ p.stock_qty|floatformat:4 }}" data-cost="{{ p.avg_cost|floatformat:4 }}">
-          {{ p }} — {{ p.stock_qty|floatformat:0 }} sq.m available
+          {{ p.display_name_combined }} — {{ p.stock_qty|floatformat:0 }} sq.m available
         </option>
         {% endfor %}
       </select>

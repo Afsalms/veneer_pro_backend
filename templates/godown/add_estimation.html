@@ -67,7 +67,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jquery-validation@1.19.5/dist/jquery.validate.min.js"></script>
 <script>
 const GST_RATE = {{ godown.gst_rate }};
-const PRODUCTS = [{% for p in products %}{id:{{ p.pk }},name:"{{ p.display_name_sale }}",sl:{{ p.sheet_length }},sw:{{ p.sheet_width }},rate:{{ p.sale_rate }}},{% endfor %}];
+const PRODUCTS = [{% for p in products %}{id:{{ p.pk }},name:"{{ p.display_name_combined }}",sl:{{ p.sheet_length }},sw:{{ p.sheet_width }},rate:{{ p.sale_rate }}},{% endfor %}];
 let estCount = 0;
 
 function estItemHTML(n) {

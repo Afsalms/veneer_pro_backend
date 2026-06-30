@@ -86,7 +86,7 @@
                       data-sheet-sqm="{{ p.effective_sheet_sqm }}"
                       data-sheet-length="{{ p.sheet_length }}"
                       data-sheet-width="{{ p.sheet_width }}">
-                {{ p.display_name }}
+                {{ p.display_name_combined }}
               </option>
               {% endfor %}
             </select>
@@ -192,7 +192,7 @@ const PRODUCTS_PO = {
   {% for p in products %}
   {{ p.pk }}: {
     id: {{ p.pk }},
-    name: "{{ p.display_name }}",
+    name: "{{ p.display_name_combined }}",
     sheet_sqm: {{ p.effective_sheet_sqm|floatformat:4 }},
     sheet_length: {{ p.sheet_length }},
     sheet_width: {{ p.sheet_width }},

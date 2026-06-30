@@ -242,6 +242,15 @@ class Product(models.Model):
         return f"{self.species} {self.thickness}"
 
     @property
+    def display_name_combined(self):
+        """Dropdown-friendly name: 'PurchaseName Thickness (SellingName)' — used in all product dropdowns.
+        If sale_name equals species, just shows the plain name without redundant parens."""
+        base = f"{self.species} {self.thickness}"
+        if self.sale_name and self.sale_name.strip().lower() != self.species.strip().lower():
+            return f"{base} ({self.sale_name})"
+        return base
+
+    @property
     def effective_sale_name(self):
         """Name shown in selling contexts — sale_name if set, else species."""
         return self.sale_name if self.sale_name else self.species

@@ -211,8 +211,8 @@ const PRODUCTS = {
   {% for p in products %}
   {{ p.pk }}: {
     id: {{ p.pk }},
-    name: "{{ p }}",
-    display: "{{ p.display_name_sale }}",
+    name: "{{ p.display_name_combined }}",
+    display: "{{ p.display_name_combined }}",
     stock: {{ p.stock_qty|floatformat:4 }},
     sale_rate: {{ p.sale_rate|floatformat:2 }},
     avg_cost: {{ p.avg_cost|floatformat:4 }},

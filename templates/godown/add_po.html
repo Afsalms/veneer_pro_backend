@@ -78,7 +78,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jquery-validation@1.19.5/dist/jquery.validate.min.js"></script>
 <script>
-const PRODUCTS = [{% for p in products %}{id:{{ p.pk }},name:"{{ p }}",sl:{{ p.sheet_length }},sw:{{ p.sheet_width }}},{% endfor %}];
+const PRODUCTS = [{% for p in products %}{id:{{ p.pk }},name:"{{ p.display_name_combined }}",sl:{{ p.sheet_length }},sw:{{ p.sheet_width }}},{% endfor %}];
 let poCount = 0;
 
 function lineItemHTML(n) {
