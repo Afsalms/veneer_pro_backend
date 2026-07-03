@@ -73,11 +73,11 @@
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:10px;">
       <div style="background:var(--body-bg);border-radius:8px;padding:10px 12px;">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin-bottom:4px;">Buy Rate</div>
-        <div style="font-size:14px;font-weight:600;">₹{{ item.grn_rate }}/sq\.m</div>
+        <div style="font-size:14px;font-weight:600;">₹{{ item.grn_rate }}/sq.m</div>
       </div>
       <div style="background:#fef6e4;border-radius:8px;padding:10px 12px;">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin-bottom:4px;">Landed Rate (incl. expenses)</div>
-        <div style="font-size:14px;font-weight:600;color:#a06a10;">₹{{ item.landed_rate|floatformat:2 }}/sq\.m</div>
+        <div style="font-size:14px;font-weight:600;color:#a06a10;">₹{{ item.landed_rate|floatformat:2 }}/sq.m</div>
       </div>
       <div style="background:#eaf5e8;border-radius:8px;padding:10px 12px;">
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--tm);margin-bottom:4px;">Revenue Realised</div>
@@ -121,7 +121,7 @@
             <td>{{ sale.customer }}</td>
             <td style="color:var(--tm);">{{ sale.date }}</td>
             <td>{{ sale.qty|floatformat:0 }}</td>
-            <td>₹{{ sale.rate }}/sq\.m</td>
+            <td>₹{{ sale.rate }}/sq.m</td>
             <td style="font-weight:500;color:#2d6a27;">₹{{ sale.revenue|floatformat:0 }}</td>
             <td style="color:var(--tm);">₹{{ sale.cogs|floatformat:0 }}</td>
             <td style="font-weight:600;color:{% if sale.profit >= 0 %}#2d6a27{% else %}#b33a36{% endif %};">

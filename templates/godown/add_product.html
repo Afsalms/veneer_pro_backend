@@ -44,7 +44,7 @@
           <option value="{{ val }}" {% if product.finish == val or not product and val == default_finish %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select></div></div>
-  <div class="frow"><div class="fhalf"><label class="fl">Buy Rate (₹/sq\.m)</label><input class="fc" name="buy_rate" type="number" step="0.01" value="{{ product.buy_rate|default:'0' }}" placeholder="0"></div><div class="fhalf"><label class="fl">Sale Rate (₹/sq\.m)</label><input class="fc" name="sale_rate" type="number" step="0.01" value="{{ product.sale_rate|default:'0' }}" placeholder="0"></div></div>
+  <div class="frow"><div class="fhalf"><label class="fl">Buy Rate (₹/sq.m)</label><input class="fc" name="buy_rate" type="number" step="0.01" value="{{ product.buy_rate|default:'0' }}" placeholder="0"></div><div class="fhalf"><label class="fl">Sale Rate (₹/sq.m)</label><input class="fc" name="sale_rate" type="number" step="0.01" value="{{ product.sale_rate|default:'0' }}" placeholder="0"></div></div>
   <div class="frow"><div class="fhalf"><label class="fl">Min Stock (sq.m)</label><input class="fc" name="min_stock" type="number" value="{{ product.min_stock|default:'500' }}" placeholder="500"></div><div class="fhalf"><label class="fl">HSN Code</label><input class="fc" name="hsn_code" value="{{ product.hsn_code|default:'' }}" placeholder="4408 (optional)"></div></div>
 
   <div style="background:var(--body-bg);border-radius:8px;padding:12px 14px;">

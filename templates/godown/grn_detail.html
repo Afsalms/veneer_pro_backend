@@ -29,15 +29,15 @@
 <div class="cv" style="margin-bottom:14px;">
   <div class="ch"><h6>Items Received</h6></div>
   <table class="tv">
-    <thead><tr><th>Product</th><th>Qty Received</th><th>Rate/sq\.m</th><th>Amount</th><th>Landed Rate</th><th>Rack</th></tr></thead>
+    <thead><tr><th>Product</th><th>Qty Received</th><th>Rate/sq.m</th><th>Amount</th><th>Landed Rate</th><th>Rack</th></tr></thead>
     <tbody>
     {% for item in grn.items.all %}
     <tr>
       <td style="font-weight:500;">{{ item.product.display_name }}</td>
       <td>{{ item.qty_display }}</td>
-      <td>₹{{ item.rate_per_sq.m }}/sq\.m</td>
+      <td>₹{{ item.rate_per_sqm }}/sq.m</td>
       <td style="font-weight:600;">₹{{ item.amount|floatformat:0 }}</td>
-      <td style="color:var(--tm);">₹{{ item.landed_rate|floatformat:2 }}/sq\.m</td>
+      <td style="color:var(--tm);">₹{{ item.landed_rate|floatformat:2 }}/sq.m</td>
       <td style="color:var(--tm);">{{ item.rack_location|default:"—" }}</td>
     </tr>
     {% endfor %}
@@ -48,25 +48,67 @@
   </table>
 </div>
 
-<!-- Landing Expenses -->
-{% if grn.landing_expenses.all %}
+<!-- GRN Expenses (new style) -->
 <div class="cv" style="margin-bottom:14px;">
-  <div class="ch"><h6>Landing Expenses</h6></div>
+  <div class="ch">
+    <h6>GRN Expenses</h6>
+    <a class="bw" href="{% url 'add_grn_expense_for' grn.pk %}" style="font-size:12px;">
+      <i class="bi bi-plus"></i> Add Expense
+    </a>
+  </div>
+  {% if grn.grn_expenses.all %}
   <table class="tv">
-    <thead><tr><th>Category</th><th>Description</th><th>Paid To</th><th>Amount</th></tr></thead>
+    <thead><tr><th>Expense No</th><th>Category</th><th>Description</th><th>Vendor</th><th>Amount</th><th>Balance</th><th></th></tr></thead>
+    <tbody>
+    {% for ge in grn.grn_expenses.all %}
+    <tr>
+      <td style="font-family:monospace;font-weight:600;color:var(--wood-600);">{{ ge.expense_number }}</td>
+      <td><span class="chip">{{ ge.get_category_display }}</span></td>
+      <td style="color:var(--tm);">{{ ge.description|default:"—" }}</td>
+      <td style="color:var(--tm);">{{ ge.vendor.name|default:"—" }}</td>
+      <td style="font-weight:500;">₹{{ ge.amount|floatformat:0 }}</td>
+      <td style="font-weight:500;{% if ge.balance > 0 %}color:#b33a36;{% else %}color:#2d6a27;{% endif %};">₹{{ ge.balance|floatformat:0 }}</td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <a class="bs" href="{% url 'edit_grn_expense' ge.pk %}" style="font-size:11px;"><i class="bi bi-pencil"></i></a>
+          <form method="post" action="{% url 'delete_grn_expense' ge.pk %}" onsubmit="return confirm('Delete {{ ge.expense_number }}?');">{% csrf_token %}
+            <button type="submit" class="bs" style="font-size:11px;color:#b33a36;border-color:#f5c6cb;"><i class="bi bi-trash3"></i></button>
+          </form>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4" style="text-align:right;padding:10px;color:var(--tm);">GRN Expenses Total</td>
+        <td style="padding:10px;font-weight:600;color:#b33a36;">₹{{ grn.grn_expenses_total|floatformat:0 }}</td>
+        <td colspan="2"></td>
+      </tr>
+    </tfoot>
+  </table>
+  {% else %}
+  <div style="padding:16px;text-align:center;color:var(--tm);font-size:13px;">
+    No expenses yet — <a href="{% url 'add_grn_expense_for' grn.pk %}" style="color:var(--wood-600);">add transport, forklift or labour charges</a>.
+  </div>
+  {% endif %}
+</div>
+
+<!-- Legacy Landing Expenses (migrated data shown for reference if any remain) -->
+{% if grn.landing_expenses.all %}
+<div class="cv" style="margin-bottom:14px;border-color:var(--border);opacity:0.7;">
+  <div class="ch"><h6 style="color:var(--tm);font-size:12px;">Legacy Expenses (migrated)</h6></div>
+  <table class="tv" style="font-size:12px;">
+    <thead><tr><th>Category</th><th>Description</th><th>Amount</th></tr></thead>
     <tbody>
     {% for exp in grn.landing_expenses.all %}
     <tr>
       <td><span class="chip">{{ exp.get_category_display }}</span></td>
       <td style="color:var(--tm);">{{ exp.description|default:"—" }}</td>
-      <td style="color:var(--tm);">{{ exp.paid_to|default:"—" }}</td>
-      <td style="font-weight:500;">₹{{ exp.amount|floatformat:0 }}</td>
+      <td>₹{{ exp.amount|floatformat:0 }}</td>
     </tr>
     {% endfor %}
     </tbody>
-    <tfoot>
-      <tr><td colspan="3" style="text-align:right;padding:10px;color:var(--tm);">Landing Total</td><td style="padding:10px;font-weight:600;color:#b33a36;">₹{{ grn.landing_expenses_total|floatformat:0 }}</td></tr>
-    </tfoot>
   </table>
 </div>
 {% endif %}
@@ -76,7 +118,7 @@
   <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:space-between;align-items:center;">
     <div style="display:flex;flex-wrap:wrap;gap:24px;">
       <div style="text-align:center;"><div style="font-size:11px;color:var(--tm);text-transform:uppercase;margin-bottom:4px;">Items</div><div style="font-weight:600;">₹{{ grn.items_total|floatformat:0 }}</div></div>
-      <div style="text-align:center;"><div style="font-size:11px;color:var(--tm);text-transform:uppercase;margin-bottom:4px;">+ Landing</div><div style="font-weight:600;">₹{{ grn.landing_expenses_total|floatformat:0 }}</div></div>
+      <div style="text-align:center;"><div style="font-size:11px;color:var(--tm);text-transform:uppercase;margin-bottom:4px;">+ Expenses</div><div style="font-weight:600;">₹{{ grn.grn_expenses_total|floatformat:0 }}</div></div>
       <div style="text-align:center;"><div style="font-size:11px;color:var(--tm);text-transform:uppercase;margin-bottom:4px;">= Total</div><div style="font-size:18px;font-weight:700;color:var(--wood-800);">₹{{ grn.total_amount|floatformat:0 }}</div></div>
       <div style="text-align:center;"><div style="font-size:11px;color:var(--tm);text-transform:uppercase;margin-bottom:4px;">Paid</div><div style="font-weight:600;color:#2d6a27;">₹{{ grn.amount_paid|floatformat:0 }}</div></div>
       <div style="text-align:center;"><div style="font-size:11px;color:var(--tm);text-transform:uppercase;margin-bottom:4px;">Balance</div><div style="font-size:18px;font-weight:700;color:{% if grn.balance > 0 %}#b33a36{% else %}#2d6a27{% endif %};">₹{{ grn.balance|floatformat:0 }}</div></div>

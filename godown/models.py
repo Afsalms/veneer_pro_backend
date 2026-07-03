@@ -59,9 +59,9 @@ class Godown(models.Model):
 
 class GodownSequence(models.Model):
     """Per-godown auto-increment sequences for document numbers."""
-    SEQ_CHOICES = [('sale','Sale'),('po','Purchase Order'),('grn','GRN'),('est','Estimation')]
+    SEQ_CHOICES = [('sale','Sale'),('po','Purchase Order'),('grn','GRN'),('est','Estimation'),('grn_expense','GRN Expense')]
     godown   = models.ForeignKey(Godown, on_delete=models.CASCADE, related_name='sequences')
-    seq_type = models.CharField(max_length=10, choices=SEQ_CHOICES)
+    seq_type = models.CharField(max_length=15, choices=SEQ_CHOICES)
     last_num = models.PositiveIntegerField(default=0)
 
     class Meta:
@@ -84,14 +84,14 @@ class GodownSequence(models.Model):
         """Returns formatted doc number e.g. SL-1001, PO-301, GRN-201."""
         n = cls.next(godown, seq_type)
         prefix_map = {
-            'sale':      godown.invoice_prefix,
-            'po':        godown.po_prefix,
-            'grn':       godown.grn_prefix,
-            'est':       'EST',
-            'cash_memo': 'CM',
+            'sale':        godown.invoice_prefix,
+            'po':          godown.po_prefix,
+            'grn':         godown.grn_prefix,
+            'est':         'EST',
+            'cash_memo':   'CM',
+            'grn_expense': 'GE',
         }
-        # Starting offsets per doc type for readability
-        offset_map = {'sale': 1000, 'po': 300, 'grn': 200, 'est': 100}
+        offset_map = {'sale': 1000, 'po': 300, 'grn': 200, 'est': 100, 'grn_expense': 0}
         num = n + offset_map.get(seq_type, 0)
         prefix = prefix_map.get(seq_type, seq_type.upper())
         return f"{prefix}-{num}"
@@ -496,7 +496,13 @@ class StockIn(models.Model):
         return sum(i.amount for i in self.items.all())
 
     @property
+    def grn_expenses_total(self):
+        """Sum of all GRNExpense amounts on this GRN."""
+        return sum(e.amount for e in self.grn_expenses.all())
+
+    @property
     def landing_expenses_total(self):
+        """Legacy LandingExpense total — kept for backward compat."""
         return sum(e.amount for e in self.landing_expenses.all())
 
     @property
@@ -509,8 +515,8 @@ class StockIn(models.Model):
 
     @property
     def total_amount(self):
-        """Material + landing expenses combined — used for landed cost calculation only."""
-        return self.items_total + self.landing_expenses_total
+        """Material + GRNExpenses (new) + legacy LandingExpenses — used for landed cost."""
+        return self.items_total + self.grn_expenses_total + self.landing_expenses_total
 
     @property
     def amount_paid_inr(self):
@@ -614,6 +620,66 @@ class LandingExpense(models.Model):
     @property
     def is_paid(self):
         return self.balance <= Decimal('0.01')
+
+
+class GRNExpense(models.Model):
+    """Standalone GRN Expense entry — created separately from GRN entry,
+    linked to a GRN and optionally to a service vendor for payable tracking.
+    Each entry gets its own GE-xxx number, recalculates landed rates on the GRN."""
+    CATEGORY_CHOICES = [
+        ('transport', 'Transportation'),
+        ('labour',    'Labour / Loading'),
+        ('forklift',  'Forklift Charges'),
+        ('customs',   'Customs / Duty'),
+        ('insurance', 'Insurance'),
+        ('misc',      'Miscellaneous'),
+    ]
+    godown      = models.ForeignKey(Godown, on_delete=models.CASCADE, related_name='grn_expenses')
+    expense_number = models.CharField(max_length=30)
+    stock_in    = models.ForeignKey(StockIn, on_delete=models.CASCADE, related_name='grn_expenses')
+    date        = models.DateField()
+    category    = models.CharField(max_length=15, choices=CATEGORY_CHOICES)
+    description = models.CharField(max_length=200, blank=True)
+    amount      = models.DecimalField(max_digits=10, decimal_places=2)
+    vendor      = models.ForeignKey(Supplier, on_delete=models.SET_NULL,
+                      null=True, blank=True, related_name='grn_expenses',
+                      help_text='Service vendor — creates a running payable')
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    created_by  = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f"{self.expense_number} — {self.get_category_display()} ₹{self.amount}"
+
+    @property
+    def balance(self):
+        return self.amount - self.amount_paid
+
+    @property
+    def is_paid(self):
+        return self.balance <= Decimal('0.01')
+
+    def recalc_landed_rates(self):
+        """Recalculate landed rate on all GRN items after expenses change."""
+        grn = self.stock_in
+        si_items = list(grn.items.all())
+        if not si_items:
+            return
+        # Total all expenses on this GRN (both GRNExpense and legacy LandingExpense)
+        total_expenses = (
+            sum(e.amount for e in grn.grn_expenses.all()) +
+            sum(e.amount for e in grn.landing_expenses.all())
+        )
+        total_qty = sum(i.qty_sqm for i in si_items)
+        if total_qty <= 0:
+            return
+        expense_per_sqm = total_expenses / total_qty
+        for item in si_items:
+            item.landed_rate = item.rate_per_sqm + expense_per_sqm
+            item.save(update_fields=['landed_rate'])
 
 
 def get_fifo_grn(product, qty_needed, godown):

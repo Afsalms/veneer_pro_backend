@@ -1,0 +1,80 @@
+{% extends "godown/base.html" %}
+{% block title %}GRN Expenses{% endblock %}
+{% block page_title %}GRN Expenses{% endblock %}
+{% block topbar_action %}<a class="bw" href="{% url 'add_grn_expense' %}"><i class="bi bi-plus"></i> Add Expense</a>{% endblock %}
+{% block content %}
+<div class="fp-header">
+  <span class="fp-title">GRN Expenses</span>
+  <a class="bw" href="{% url 'add_grn_expense' %}" style="margin-left:auto;"><i class="bi bi-plus"></i> Add Expense</a>
+</div>
+
+{% if not expenses %}
+<div class="cv" style="text-align:center;padding:40px;">
+  <div style="font-size:40px;margin-bottom:12px;">📋</div>
+  <div style="font-size:15px;font-weight:600;color:var(--ts);margin-bottom:6px;">No GRN Expenses yet</div>
+  <div style="font-size:13px;color:var(--tm);margin-bottom:16px;">Add transport, forklift, labour and other charges against a GRN.</div>
+  <a class="bw" href="{% url 'add_grn_expense' %}"><i class="bi bi-plus"></i> Add First Expense</a>
+</div>
+{% else %}
+<div class="cv" style="padding:0;overflow:hidden;">
+  <table class="dt" style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:var(--wood-50);">
+      <th style="padding:10px 14px;text-align:left;">Expense No</th>
+      <th style="padding:10px 14px;text-align:left;">Date</th>
+      <th style="padding:10px 14px;text-align:left;">GRN</th>
+      <th style="padding:10px 14px;text-align:left;">Category</th>
+      <th style="padding:10px 14px;text-align:left;">Vendor</th>
+      <th style="padding:10px 14px;text-align:right;">Amount</th>
+      <th style="padding:10px 14px;text-align:right;">Balance</th>
+      <th style="padding:10px 14px;"></th>
+    </tr></thead>
+    <tbody>
+    {% for ge in expenses %}
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:9px 14px;font-family:monospace;font-weight:600;color:var(--wood-600);">{{ ge.expense_number }}</td>
+      <td style="padding:9px 14px;color:var(--tm);">{{ ge.date }}</td>
+      <td style="padding:9px 14px;">
+        <a href="{% url 'grn_detail' ge.stock_in.pk %}" style="color:var(--wood-600);">{{ ge.stock_in.grn_number }}</a>
+        <div style="font-size:11px;color:var(--tm);">{{ ge.stock_in.supplier.name }}</div>
+      </td>
+      <td style="padding:9px 14px;"><span class="chip">{{ ge.get_category_display }}</span></td>
+      <td style="padding:9px 14px;color:var(--tm);">{{ ge.vendor.name|default:'—' }}</td>
+      <td style="padding:9px 14px;text-align:right;font-weight:600;">₹{{ ge.amount|floatformat:0 }}</td>
+      <td style="padding:9px 14px;text-align:right;{% if ge.balance > 0 %}color:#b33a36;font-weight:600;{% else %}color:#2d6a27;{% endif %}">
+        ₹{{ ge.balance|floatformat:0 }}
+      </td>
+      <td style="padding:9px 14px;">
+        <div style="display:flex;gap:6px;">
+          <a class="bs" href="{% url 'edit_grn_expense' ge.pk %}" style="font-size:11px;"><i class="bi bi-pencil"></i></a>
+          <form method="post" action="{% url 'delete_grn_expense' ge.pk %}" onsubmit="return confirm('Delete {{ ge.expense_number }}?');">
+            {% csrf_token %}
+            <button type="submit" class="bs" style="font-size:11px;color:#b33a36;border-color:#f5c6cb;"><i class="bi bi-trash3"></i></button>
+          </form>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="ml" style="padding:12px;">
+    {% for ge in expenses %}
+    <div class="mc" style="margin-bottom:10px;">
+      <div class="mct">
+        <div><div class="mcn">{{ ge.expense_number }} — {{ ge.get_category_display }}</div>
+        <div class="mcs">{{ ge.stock_in.grn_number }} · {{ ge.date }}</div></div>
+        <span style="font-weight:700;{% if ge.balance > 0 %}color:#b33a36;{% endif %}">₹{{ ge.amount|floatformat:0 }}</span>
+      </div>
+      {% if ge.vendor %}<div class="mr"><span class="mrk">Vendor</span><span class="mrv">{{ ge.vendor.name }}</span></div>{% endif %}
+      <div class="mr"><span class="mrk">Balance</span><span class="mrv" style="{% if ge.balance > 0 %}color:#b33a36;{% endif %}">₹{{ ge.balance|floatformat:0 }}</span></div>
+      <div style="margin-top:8px;display:flex;gap:8px;">
+        <a class="bs" href="{% url 'edit_grn_expense' ge.pk %}" style="flex:1;text-align:center;"><i class="bi bi-pencil"></i> Edit</a>
+        <form method="post" action="{% url 'delete_grn_expense' ge.pk %}" onsubmit="return confirm('Delete?');">
+          {% csrf_token %}<button type="submit" class="bs" style="color:#b33a36;"><i class="bi bi-trash3"></i></button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

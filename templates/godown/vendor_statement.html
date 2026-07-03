@@ -30,7 +30,7 @@
 </div>
 
 <div class="cv" style="padding:0;overflow:hidden;">
-  <table class="dt hide-mobile" style="width:100%;border-collapse:collapse;font-size:13px;">
+  <table class="dt" style="width:100%;border-collapse:collapse;font-size:13px;">
     <thead>
       <tr style="background:var(--wood-50);">
         <th style="padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);">Date</th>
@@ -65,7 +65,7 @@
       {% endfor %}
     </tbody>
   </table>
-  <div class="show-mobile" style="padding:12px;">
+  <div class="ml" style="padding:12px;">
     {% for e in expenses %}
     <div class="mc" style="margin-bottom:10px;">
       <div class="mct"><div><div class="mcn">{{ e.get_category_display }}</div><div class="mcs">{{ e.stock_in.grn_number }} · {{ e.stock_in.date }}</div></div></div>

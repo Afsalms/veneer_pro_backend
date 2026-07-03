@@ -1,37 +1,184 @@
 {% extends "godown/base.html" %}
 {% block title %}Suppliers{% endblock %}
 {% block page_title %}Suppliers{% endblock %}
-{% block topbar_action %}<a class="bw" id="topbar-action" href="{% url 'add_supplier' %}"><i class="bi bi-plus"></i> Add Supplier</a>{% endblock %}
+{% block topbar_action %}<a class="bw" href="{% url 'add_supplier' %}"><i class="bi bi-plus"></i> Add</a>{% endblock %}
 {% block fab %}<a id="fab" class="fab-show" href="{% url 'add_supplier' %}" style="display:flex;"><i class="bi bi-plus"></i></a>{% endblock %}
 {% block content %}
+
+<!-- Tab bar -->
+<div style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border);">
+  <button onclick="switchTab('material')" id="tab-material"
+    style="padding:10px 20px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;color:var(--ts);">
+    <i class="bi bi-truck-flatbed"></i> Material Suppliers
+    <span id="count-material" style="margin-left:6px;font-size:11px;background:var(--wood-200);color:var(--wood-800);padding:2px 7px;border-radius:10px;"></span>
+  </button>
+  <button onclick="switchTab('service')" id="tab-service"
+    style="padding:10px 20px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;color:var(--tm);">
+    <i class="bi bi-people"></i> Service Vendors
+    <span id="count-service" style="margin-left:6px;font-size:11px;background:var(--wood-200);color:var(--wood-800);padding:2px 7px;border-radius:10px;"></span>
+  </button>
+</div>
+
 <div class="cv">
-  <div class="ch"><h6>All Suppliers ({{ suppliers|length }})</h6><a class="bw" href="{% url 'add_supplier' %}"><i class="bi bi-plus"></i> Add Supplier</a></div>
-  <table class="tv dt"><thead><tr><th>Supplier</th><th>Phone</th><th>Location</th><th>Species</th><th>Payable</th><th>Status</th><th></th></tr></thead>
-  <tbody>{% for s in suppliers %}
-  <tr><td><div style="font-weight:500;">{{ s.name }}</div><div style="font-size:11px;color:var(--tm);">{{ s.city }}, {{ s.state }}</div></td>
-  <td>{{ s.phone }}</td><td>{{ s.city }}</td><td>{% for sp in s.species_supplied.split %}<span class="chip">{{ sp }}</span> {% endfor %}</td>
-  <td style="font-weight:500;color:{% if s.db_combined_payable > 0 %}#b33a36{% elif s.db_combined_payable < 0 %}#2d6a27{% endif %};">
-      {% if s.db_combined_payable < 0 %}
-        <span title="Supplier owes you (overpaid/advance credit)">(Cr) ₹{{ s.db_combined_payable|stringformat:".0f"|slice:"1:" }}</span>
-      {% else %}
-        ₹{{ s.db_combined_payable|floatformat:0 }}
+  <div class="ch">
+    <h6 id="list-title">Material Suppliers</h6>
+    <a class="bw" href="{% url 'add_supplier' %}"><i class="bi bi-plus"></i> Add Supplier</a>
+  </div>
+
+  <!-- Desktop table -->
+  <table class="tv dt" id="supplier-table">
+    <thead>
+      <tr>
+        <th>Name</th><th>Phone</th><th>Location</th>
+        <th id="col-species">Species</th>
+        <th>Payable</th><th>Status</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="supplier-tbody">
+      {% for s in suppliers %}
+      <tr data-type="{{ s.supplier_type }}" data-name="{{ s.name|lower }}">
+        <td>
+          <div style="font-weight:500;">{{ s.name }}</div>
+          <div style="font-size:11px;color:var(--tm);">{{ s.city }}{% if s.city and s.state %}, {% endif %}{{ s.state }}</div>
+          <div style="font-size:10px;color:var(--wood-600);margin-top:1px;">
+            {% if s.supplier_type == 'material' %}Material Supplier
+            {% elif s.supplier_type == 'service' %}Service Vendor
+            {% else %}Material &amp; Service{% endif %}
+          </div>
+        </td>
+        <td>{{ s.phone }}</td>
+        <td>{{ s.city }}</td>
+        <td class="col-species">{% for sp in s.species_supplied.split %}<span class="chip">{{ sp }}</span> {% endfor %}</td>
+        <td style="font-weight:500;color:{% if s.db_combined_payable > 0 %}#b33a36{% elif s.db_combined_payable < 0 %}#2d6a27{% endif %};">
+          {% if s.db_combined_payable < 0 %}
+            <span title="Overpaid / advance credit">(Cr) ₹{{ s.db_combined_payable|stringformat:".0f"|slice:"1:" }}</span>
+          {% else %}
+            ₹{{ s.db_combined_payable|floatformat:0 }}
+          {% endif %}
+          {% if s.db_total_payable and s.db_service_payable %}
+          <div style="font-size:10px;color:var(--tm);font-weight:400;margin-top:2px;">₹{{ s.db_total_payable|floatformat:0 }} mat + ₹{{ s.db_service_payable|floatformat:0 }} svc</div>
+          {% endif %}
+        </td>
+        <td><span class="bv {% if s.db_combined_payable > 0 %}ba{% else %}bg{% endif %}">{% if s.db_combined_payable > 0 %}Dues Pending{% else %}Clear{% endif %}</span></td>
+        <td>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <a class="bs" href="{% url 'supplier_history' s.pk %}"><i class="bi bi-clock-history"></i> History</a>
+            <a class="bs" href="{% url 'edit_supplier' s.pk %}"><i class="bi bi-pencil"></i> Edit</a>
+            {% if s.pk not in used_pks %}
+            <form method="post" action="{% url 'delete_supplier' s.pk %}" style="display:inline;" onsubmit="return confirm('Delete {{ s.name }}?');">{% csrf_token %}
+              <button type="submit" class="bs" style="color:#b33a36;border-color:#f5c6cb;padding:4px 8px;"><i class="bi bi-trash3"></i></button>
+            </form>
+            {% else %}<span style="font-size:10px;color:var(--tm);">In use</span>{% endif %}
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr id="empty-row"><td colspan="7" style="text-align:center;color:var(--tm);padding:30px;">No suppliers yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Mobile cards -->
+  <div class="ml" id="supplier-cards">
+    {% for s in suppliers %}
+    <div class="mc" data-type="{{ s.supplier_type }}">
+      <div class="mct">
+        <div>
+          <div class="mcn">{{ s.name }}</div>
+          <div class="mcs">{{ s.city }}{% if s.city and s.state %}, {% endif %}{{ s.state }} · {{ s.phone }}</div>
+        </div>
+        <span class="bv {% if s.db_combined_payable > 0 %}ba{% else %}bg{% endif %}">{% if s.db_combined_payable > 0 %}Dues{% else %}Clear{% endif %}</span>
+      </div>
+      <div class="mr"><span class="mrk">Type</span>
+        <span class="mrv">{% if s.supplier_type == 'material' %}Material{% elif s.supplier_type == 'service' %}Service Vendor{% else %}Both{% endif %}</span>
+      </div>
+      {% if s.supplier_type != 'service' and s.species_supplied %}
+      <div class="mr"><span class="mrk">Species</span><span class="mrv">{{ s.species_supplied }}</span></div>
       {% endif %}
-      {% if s.db_total_payable and s.db_service_payable %}
-      <div style="font-size:10px;color:var(--tm);font-weight:400;margin-top:2px;">₹{{ s.db_total_payable|floatformat:0 }} material + ₹{{ s.db_service_payable|floatformat:0 }} service</div>
-      {% endif %}
-    </td>
-  <td><span class="bv {% if s.db_combined_payable > 0 %}ba{% else %}bg{% endif %}">{% if s.db_combined_payable > 0 %}Dues Pending{% else %}Clear{% endif %}</span></td>
-  <td><div style="display:flex;gap:6px;align-items:center;">
-    <a class="bs" href="{% url 'supplier_history' s.pk %}"><i class="bi bi-clock-history"></i> History</a>
-    <a class="bs" href="{% url 'edit_supplier' s.pk %}"><i class="bi bi-pencil"></i> Edit</a>
-    {% if s.pk not in used_pks %}
-    <form method="post" action="{% url 'delete_supplier' s.pk %}" style="display:inline;" onsubmit="return confirm('Delete {{ s.name }}?');">{% csrf_token %}
-      <button type="submit" class="bs" style="color:#b33a36;border-color:#f5c6cb;padding:4px 8px;"><i class="bi bi-trash3"></i></button>
-    </form>
-    {% else %}<span style="font-size:10px;color:var(--tm);">In use</span>{% endif %}
-  </div></td></tr>
-  {% empty %}<tr><td colspan="7" style="text-align:center;color:var(--tm);padding:30px;">No suppliers yet.</td></tr>{% endfor %}</tbody></table>
-  <div class="ml">{% for s in suppliers %}
-  <div class="mc"><div class="mct"><div><div class="mcn">{{ s.name }}</div><div class="mcs">{{ s.city }}, {{ s.state }} · {{ s.phone }}</div></div><span class="bv {% if s.db_combined_payable > 0 %}ba{% else %}bg{% endif %}">{% if s.db_combined_payable > 0 %}Dues{% else %}Clear{% endif %}</span></div><div class="mr"><span class="mrk">Species</span><span class="mrv">{{ s.species_supplied }}</span></div><div class="mr"><span class="mrk">Payable</span><span class="mrv" style="{% if s.db_combined_payable > 0 %}color:#b33a36;{% endif %}">₹{{ s.db_combined_payable|floatformat:0 }}</span></div>{% if s.db_total_payable and s.db_service_payable %}<div class="mr"><span class="mrk">Breakdown</span><span class="mrv" style="font-size:11px;color:var(--tm);">₹{{ s.db_total_payable|floatformat:0 }} material + ₹{{ s.db_service_payable|floatformat:0 }} service</span></div>{% endif %}</div>
-  {% endfor %}</div>
-</div>{% endblock %}
+      <div class="mr"><span class="mrk">Payable</span>
+        <span class="mrv" style="{% if s.db_combined_payable > 0 %}color:#b33a36;{% endif %}">₹{{ s.db_combined_payable|floatformat:0 }}</span>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:8px;">
+        <a class="bs" href="{% url 'supplier_history' s.pk %}" style="flex:1;text-align:center;"><i class="bi bi-clock-history"></i> History</a>
+        <a class="bs" href="{% url 'edit_supplier' s.pk %}"><i class="bi bi-pencil"></i></a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div id="empty-tab" style="display:none;text-align:center;padding:30px;color:var(--tm);">
+    No records in this category yet.
+  </div>
+</div>
+
+{% endblock %}
+{% block extra_js %}
+<script>
+const ACTIVE_TAB_STYLE = 'border-bottom:3px solid var(--wood-800);color:var(--ts);';
+const INACTIVE_TAB_STYLE = 'border-bottom:3px solid transparent;color:var(--tm);';
+
+let currentTab = 'material';
+
+function switchTab(tab) {
+  currentTab = tab;
+
+  // Tab button styles
+  document.getElementById('tab-material').style.cssText += INACTIVE_TAB_STYLE;
+  document.getElementById('tab-service').style.cssText  += INACTIVE_TAB_STYLE;
+  document.getElementById('tab-' + tab).style.cssText   += ACTIVE_TAB_STYLE;
+
+  // Title
+  document.getElementById('list-title').textContent =
+    tab === 'material' ? 'Material Suppliers' : 'Service Vendors';
+
+  // Species column visibility (only relevant for material)
+  document.querySelectorAll('.col-species').forEach(el => {
+    el.style.display = tab === 'material' ? '' : 'none';
+  });
+  const speciesHeader = document.getElementById('col-species');
+  if (speciesHeader) speciesHeader.style.display = tab === 'material' ? '' : 'none';
+
+  // Show/hide desktop rows
+  let visibleCount = 0;
+  document.querySelectorAll('#supplier-tbody tr[data-type]').forEach(row => {
+    const t = row.getAttribute('data-type');
+    const show = (tab === 'material' && (t === 'material' || t === 'both')) ||
+                 (tab === 'service'  && (t === 'service'  || t === 'both'));
+    row.style.display = show ? '' : 'none';
+    if (show) visibleCount++;
+  });
+
+  // Show/hide mobile cards
+  document.querySelectorAll('#supplier-cards .mc').forEach(card => {
+    const t = card.getAttribute('data-type');
+    const show = (tab === 'material' && (t === 'material' || t === 'both')) ||
+                 (tab === 'service'  && (t === 'service'  || t === 'both'));
+    card.style.display = show ? '' : 'none';
+  });
+
+  // Empty state
+  const emptyEl = document.getElementById('empty-tab');
+  emptyEl.style.display = visibleCount === 0 ? '' : 'none';
+
+  // Update counts
+  updateCounts();
+}
+
+function updateCounts() {
+  let matCount = 0, svcCount = 0;
+  document.querySelectorAll('#supplier-tbody tr[data-type]').forEach(row => {
+    const t = row.getAttribute('data-type');
+    if (t === 'material' || t === 'both') matCount++;
+    if (t === 'service'  || t === 'both') svcCount++;
+  });
+  document.getElementById('count-material').textContent = matCount;
+  document.getElementById('count-service').textContent  = svcCount;
+}
+
+// Init on load
+document.addEventListener('DOMContentLoaded', () => {
+  updateCounts();
+  switchTab('material');
+});
+</script>
+{% endblock %}

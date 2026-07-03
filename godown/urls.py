@@ -48,6 +48,13 @@ urlpatterns = [
     path('stock-in/<int:pk>/', views.grn_detail,    name='grn_detail'),
     path('stock-in/<int:pk>/edit/', views.edit_grn, name='edit_grn'),
 
+    # GRN Expenses
+    path('grn-expenses/',                          views.grn_expense_list,  name='grn_expense_list'),
+    path('grn-expenses/add/',                      views.add_grn_expense,   name='add_grn_expense'),
+    path('grn-expenses/add/<int:grn_pk>/',         views.add_grn_expense,   name='add_grn_expense_for'),
+    path('grn-expenses/<int:pk>/edit/',            views.edit_grn_expense,  name='edit_grn_expense'),
+    path('grn-expenses/<int:pk>/delete/',          views.delete_grn_expense,name='delete_grn_expense'),
+
     # Sales
     path('sales/',                        views.sales_list,   name='sales_list'),
     path('sales/add/',                    views.add_sale,     name='add_sale'),

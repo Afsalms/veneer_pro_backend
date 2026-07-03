@@ -213,6 +213,7 @@ textarea.fc{resize:vertical;min-height:72px;}
   <div class="sb-sec">Operations</div>
   <a class="sb-item {% if active == 'po' %}active{% endif %}" href="{% url 'po_list' %}"><i class="bi bi-file-earmark-text"></i>Purchase Orders</a>
   <a class="sb-item {% if active == 'stock_in' %}active{% endif %}" href="{% url 'stock_in_list' %}"><i class="bi bi-box-arrow-in-down"></i>Stock In (GRN)</a>
+  <a class="sb-item {% if active == 'grn_expenses' %}active{% endif %}" href="{% url 'grn_expense_list' %}" style="padding-left:32px;font-size:12px;"><i class="bi bi-receipt"></i>GRN Expenses</a>
   <a class="sb-item {% if active == 'sales' %}active{% endif %}" href="{% url 'sales_list' %}"><i class="bi bi-receipt"></i>Sales</a>
   <a class="sb-item {% if active == 'estimations' %}active{% endif %}" href="{% url 'estimations' %}"><i class="bi bi-clipboard-check"></i>Estimations</a>
   <a class="sb-item {% if active == 'products' %}active{% endif %}" href="{% url 'products' %}"><i class="bi bi-layers"></i>Products</a>

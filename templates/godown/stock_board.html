@@ -133,8 +133,8 @@
       <span class="bv {% if p.stock_status == 'ok' %}bg{% elif p.stock_status == 'low' %}ba{% elif p.stock_status == 'critical' %}br{% else %}br{% endif %}">{{ p.stock_status|title }}</span>
     </div>
     <div class="mr"><span class="mrk">Stock</span><span class="mrv" style="font-size:16px;font-weight:700;{% if p.stock_status in 'critical,out' %}color:#b33a36;{% elif p.stock_status == 'low' %}color:#a06a10;{% endif %}">{{ p.stock_qty|floatformat:0 }} sq.m</span></div>
-    <div class="mr"><span class="mrk">Avg Cost</span><span class="mrv">₹{{ p.avg_cost|floatformat:2 }}/sq\.m</span></div>
-    <div class="mr"><span class="mrk">Sale Rate</span><span class="mrv" style="color:var(--wood-600);">₹{{ p.sale_rate|floatformat:2 }}/sq\.m</span></div>
+    <div class="mr"><span class="mrk">Avg Cost</span><span class="mrv">₹{{ p.avg_cost|floatformat:2 }}/sq.m</span></div>
+    <div class="mr"><span class="mrk">Sale Rate</span><span class="mrv" style="color:var(--wood-600);">₹{{ p.sale_rate|floatformat:2 }}/sq.m</span></div>
     <div class="mr"><span class="mrk">Stock Value</span><span class="mrv" style="font-weight:600;">₹{{ p.stock_value|floatformat:0 }}</span></div>
     {% if p.days_left is not None %}<div class="mr"><span class="mrk">Days of Stock</span><span class="mrv">{{ p.days_left|floatformat:0 }} days ({{ p.avg_daily }} sq.m/day)</span></div>{% endif %}
   </div>

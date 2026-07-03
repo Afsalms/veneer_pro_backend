@@ -47,7 +47,7 @@ from .models import (
     Sale, SaleItem, Expense, Payment, StockAlert,
     Estimation, EstimationItem,
     LookupValue, LookupCategory,
-    StockDamage, BankAccount, BankTransaction, VendorPayment,
+    StockDamage, BankAccount, BankTransaction, VendorPayment, GRNExpense,
     get_fifo_grn,
 )
 
@@ -3804,3 +3804,206 @@ def quick_add_vendor(request):
         godown=godown, name=name, supplier_type='service',
     )
     return JsonResponse({'ok': True, 'id': vendor.pk, 'name': vendor.name})
+
+
+# ══════════════════════════════════════════════════════════════════
+# GRN EXPENSES
+# ══════════════════════════════════════════════════════════════════
+
+def _eligible_grns(godown):
+    """GRNs that can still have expenses added: no sales made from them yet."""
+    from django.db.models import Exists, OuterRef
+    sold_grn_pks = set(
+        SaleItem.objects.filter(sale__godown=godown)
+        .exclude(grn_source=None)
+        .values_list('grn_source_id', flat=True)
+    )
+    # Also exclude GRNs whose stock has partially been sold (even without FIFO link)
+    # by checking if any product from the GRN has had sales after this GRN date
+    # Simpler: client said "any sales made from it" = exclude if grn_source matches
+    return StockIn.objects.filter(godown=godown).exclude(pk__in=sold_grn_pks)\
+               .select_related('supplier').order_by('-date')
+
+
+def _recalc_grn_landed(grn):
+    """Recalculate landed rate on all items of a GRN based on total GRNExpense amounts."""
+    si_items = list(grn.items.all())
+    if not si_items:
+        return
+    total_expenses = sum(e.amount for e in grn.grn_expenses.all())
+    total_qty = sum(i.qty_sqm for i in si_items)
+    if total_qty <= 0:
+        return
+    expense_per_sqm = total_expenses / total_qty
+    for item in si_items:
+        item.landed_rate = item.rate_per_sqm + expense_per_sqm
+        item.save(update_fields=['landed_rate'])
+
+
+@login_req
+def grn_expense_list(request):
+    godown = get_godown(request)
+    expenses = GRNExpense.objects.filter(godown=godown)\
+                   .select_related('stock_in', 'vendor').order_by('-date', '-created_at')
+    return render(request, 'godown/grn_expense_list.html', ctx(request, {
+        'active': 'grn_expenses', 'expenses': expenses,
+    }))
+
+
+@login_req
+def add_grn_expense(request, grn_pk=None):
+    godown = get_godown(request)
+    eligible_grns = _eligible_grns(godown)
+    service_vendors = Supplier.objects.filter(godown=godown, supplier_type__in=['service', 'both'])
+    preselected_grn = None
+    if grn_pk:
+        from django.shortcuts import get_object_or_404
+        preselected_grn = get_object_or_404(StockIn, pk=grn_pk, godown=godown)
+
+    if request.method == 'POST':
+        errors = []
+        grn_id   = request.POST.get('grn', '').strip()
+        category = request.POST.get('category', '').strip()
+        date_str = request.POST.get('date', '').strip()
+        amt_str  = request.POST.get('amount', '').strip()
+        vendor_id = request.POST.get('vendor', '').strip()
+
+        if not grn_id:   errors.append('Please select a GRN.')
+        if not category: errors.append('Please select a category.')
+        if not date_str: errors.append('Please enter a date.')
+        try:
+            amount = Decimal(amt_str) if amt_str else Decimal('0')
+            if amount <= 0: errors.append('Amount must be greater than 0.')
+        except Exception:
+            errors.append('Invalid amount.')
+            amount = Decimal('0')
+
+        grn_obj = None
+        if grn_id:
+            try:
+                grn_obj = StockIn.objects.get(pk=grn_id, godown=godown)
+                # Safety: check no sales against this GRN
+                if SaleItem.objects.filter(grn_source=grn_obj).exists():
+                    errors.append(f'{grn_obj.grn_number} has sales recorded — expenses cannot be added.')
+            except StockIn.DoesNotExist:
+                errors.append('Invalid GRN selected.')
+
+        if errors:
+            for e in errors: messages.error(request, e)
+            return render(request, 'godown/add_grn_expense.html', ctx(request, {
+                'active': 'grn_expenses',
+                'eligible_grns': eligible_grns,
+                'service_vendors': service_vendors,
+                'preselected_grn': preselected_grn,
+            }))
+
+        # Preview before save
+        if not request.POST.get('confirmed'):
+            vendor_name = ''
+            if vendor_id:
+                try: vendor_name = service_vendors.get(pk=vendor_id).name
+                except: pass
+            header = [
+                ('GRN',      f"{grn_obj.grn_number} — {grn_obj.supplier.name}"),
+                ('Date',     date_str),
+                ('Category', dict(GRNExpense.CATEGORY_CHOICES).get(category, category)),
+                ('Amount',   f'₹{amount:,.2f}'),
+                ('Vendor',   vendor_name or '— No vendor'),
+            ]
+            if request.POST.get('description'):
+                header.append(('Description', request.POST.get('description')))
+            return _preview_response(request,
+                title='GRN Expense', icon='🧾',
+                header=header, items=[],
+                item_cols=[], totals=[('Amount', f'₹{amount:,.2f}', True)],
+                confirm_url=request.path)
+
+        with transaction.atomic():
+            expense_number = GodownSequence.format_number(godown, 'grn_expense')
+            ge = GRNExpense.objects.create(
+                godown=godown,
+                expense_number=expense_number,
+                stock_in=grn_obj,
+                date=date_str,
+                category=category,
+                description=request.POST.get('description', ''),
+                amount=amount,
+                vendor_id=vendor_id if vendor_id else None,
+                created_by=request.user,
+            )
+            # Recalculate landed rates on the GRN
+            _recalc_grn_landed(grn_obj)
+
+        messages.success(request, f'GRN Expense {ge.expense_number} recorded. Landed rates updated.')
+        if grn_pk:
+            return redirect('grn_detail', pk=grn_pk)
+        return redirect('grn_expense_list')
+
+    return render(request, 'godown/add_grn_expense.html', ctx(request, {
+        'active': 'grn_expenses',
+        'eligible_grns': eligible_grns,
+        'service_vendors': service_vendors,
+        'preselected_grn': preselected_grn,
+    }))
+
+
+@login_req
+def edit_grn_expense(request, pk):
+    godown  = get_godown(request)
+    ge = get_object_or_404(GRNExpense, pk=pk, godown=godown)
+    grn = ge.stock_in
+
+    # Block edit if any sales made against this GRN
+    if SaleItem.objects.filter(grn_source=grn).exists():
+        messages.error(request, f'Cannot edit — sales have been recorded from {grn.grn_number}.')
+        return redirect('grn_expense_list')
+
+    service_vendors = Supplier.objects.filter(godown=godown, supplier_type__in=['service', 'both'])
+
+    if request.method == 'POST':
+        errors = []
+        try:
+            amount = Decimal(request.POST.get('amount', 0) or 0)
+            if amount <= 0: errors.append('Amount must be greater than 0.')
+        except Exception:
+            errors.append('Invalid amount.'); amount = Decimal('0')
+        if not request.POST.get('date'): errors.append('Date is required.')
+        if errors:
+            for e in errors: messages.error(request, e)
+            return render(request, 'godown/edit_grn_expense.html', ctx(request, {
+                'active': 'grn_expenses', 'ge': ge, 'service_vendors': service_vendors,
+                'form_errors': errors,
+            }))
+        with transaction.atomic():
+            ge.date        = request.POST['date']
+            ge.category    = request.POST.get('category', ge.category)
+            ge.description = request.POST.get('description', '')
+            ge.amount      = amount
+            ge.vendor_id   = request.POST.get('vendor') or None
+            ge.save()
+            _recalc_grn_landed(grn)
+        messages.success(request, f'{ge.expense_number} updated. Landed rates recalculated.')
+        return redirect('grn_detail', pk=grn.pk)
+
+    return render(request, 'godown/edit_grn_expense.html', ctx(request, {
+        'active': 'grn_expenses', 'ge': ge, 'service_vendors': service_vendors,
+    }))
+
+
+@login_req
+def delete_grn_expense(request, pk):
+    godown = get_godown(request)
+    ge  = get_object_or_404(GRNExpense, pk=pk, godown=godown)
+    grn = ge.stock_in
+
+    if SaleItem.objects.filter(grn_source=grn).exists():
+        messages.error(request, f'Cannot delete — sales recorded from {grn.grn_number}.')
+        return redirect('grn_detail', pk=grn.pk)
+
+    if request.method == 'POST':
+        with transaction.atomic():
+            ge.delete()
+            _recalc_grn_landed(grn)
+        messages.success(request, 'GRN Expense deleted. Landed rates recalculated.')
+        return redirect('grn_detail', pk=grn.pk)
+    return redirect('grn_detail', pk=grn.pk)
