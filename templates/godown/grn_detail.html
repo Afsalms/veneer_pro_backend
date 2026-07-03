@@ -94,24 +94,7 @@
   {% endif %}
 </div>
 
-<!-- Legacy Landing Expenses (migrated data shown for reference if any remain) -->
-{% if grn.landing_expenses.all %}
-<div class="cv" style="margin-bottom:14px;border-color:var(--border);opacity:0.7;">
-  <div class="ch"><h6 style="color:var(--tm);font-size:12px;">Legacy Expenses (migrated)</h6></div>
-  <table class="tv" style="font-size:12px;">
-    <thead><tr><th>Category</th><th>Description</th><th>Amount</th></tr></thead>
-    <tbody>
-    {% for exp in grn.landing_expenses.all %}
-    <tr>
-      <td><span class="chip">{{ exp.get_category_display }}</span></td>
-      <td style="color:var(--tm);">{{ exp.description|default:"—" }}</td>
-      <td>₹{{ exp.amount|floatformat:0 }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
+<!-- GRN Expenses are now managed via the GRN Expenses section above -->
 
 <!-- Payment summary -->
 <div class="cv" style="margin-bottom:14px;background:var(--wood-100);border-color:var(--wood-200);">
