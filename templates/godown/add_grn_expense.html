@@ -52,8 +52,33 @@
       </select>
     </div>
     <div class="fhalf">
-      <label class="fl">Amount (₹) *</label>
-      <input class="fc" name="amount" type="number" step="0.01" min="0.01" required placeholder="0.00">
+      <label class="fl">Base Amount (₹) * <span style="font-weight:400;color:var(--tm);">before GST</span></label>
+      <input class="fc" name="amount" id="exp-amount" type="number" step="0.01" min="0.01" required placeholder="0.00" oninput="calcExpGST()">
+    </div>
+  </div>
+
+  <!-- GST section -->
+  <div style="background:var(--body-bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+    <div style="font-size:12px;font-weight:600;color:var(--tm);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em;">GST on this Expense <span style="font-weight:400;">(optional — only if vendor is GST registered)</span></div>
+    <div class="frow">
+      <div class="fthird">
+        <label class="fl">GST Rate (%)</label>
+        <select class="fc fsel" name="gst_rate" id="exp-gst-rate" onchange="calcExpGST()">
+          <option value="0">0% (No GST / Exempt)</option>
+          <option value="5">5%</option>
+          <option value="12">12%</option>
+          <option value="18">18%</option>
+          <option value="28">28%</option>
+        </select>
+      </div>
+      <div class="fthird">
+        <label class="fl">GST Amount (₹) <span style="font-weight:400;color:var(--tm);">auto-calc, editable</span></label>
+        <input class="fc" name="gst_amount" id="exp-gst-amount" type="number" step="0.01" min="0" placeholder="0.00" oninput="onGSTAmountEdit()">
+      </div>
+      <div class="fthird">
+        <label class="fl">Total Bill (₹)</label>
+        <input class="fc" id="exp-total-bill" readonly style="background:#f0ebe3;font-weight:600;" placeholder="0.00">
+      </div>
     </div>
   </div>
 
@@ -114,5 +139,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const sel = document.querySelector('[name="grn"]');
   if (sel && sel.value) onGRNChange(sel);
 });
+
+function calcExpGST() {
+  const base    = parseFloat(document.getElementById('exp-amount')?.value || 0) || 0;
+  const rate    = parseFloat(document.getElementById('exp-gst-rate')?.value || 0) || 0;
+  const gstAmt  = (base * rate / 100);
+  const total   = base + gstAmt;
+  const gstEl   = document.getElementById('exp-gst-amount');
+  const totalEl = document.getElementById('exp-total-bill');
+  if (gstEl) gstEl.value = gstAmt > 0 ? gstAmt.toFixed(2) : '';
+  if (totalEl) totalEl.value = total > 0 ? '₹' + total.toLocaleString('en-IN', {maximumFractionDigits:2}) : '';
+}
+
+function onGSTAmountEdit() {
+  // User manually edited GST amount — just recalc total
+  const base    = parseFloat(document.getElementById('exp-amount')?.value || 0) || 0;
+  const gstAmt  = parseFloat(document.getElementById('exp-gst-amount')?.value || 0) || 0;
+  const totalEl = document.getElementById('exp-total-bill');
+  if (totalEl) totalEl.value = (base + gstAmt) > 0 ? '₹' + (base + gstAmt).toLocaleString('en-IN', {maximumFractionDigits:2}) : '';
+}
 </script>
 {% endblock %}

@@ -155,15 +155,13 @@ class Supplier(models.Model):
 
     @property
     def total_payable(self):
-        """Material cost owed to this supplier — landing expenses are NOT included.
-        Advance payments are subtracted once per PO (not per GRN, which avoids
-        double-subtracting when a PO splits into multiple partial-delivery GRNs,
-        and correctly counts advances on POs that have no GRN yet)."""
+        """Material cost + GST on material owed to this supplier.
+        = (base items + GST on material) - payments - PO advances"""
         grns = self.purchase_orders.all()
-        items_total = sum(g.items_total for g in grns)
-        paid_inr    = sum(g.amount_paid_inr for g in grns)
-        advance_inr = sum(po.advance_paid_inr for po in PurchaseOrder.objects.filter(supplier=self))
-        return items_total - paid_inr - advance_inr
+        material_total = sum(g.material_total_payable for g in grns)
+        paid_inr       = sum(g.amount_paid_inr for g in grns)
+        advance_inr    = sum(po.advance_paid_inr for po in PurchaseOrder.objects.filter(supplier=self))
+        return material_total - paid_inr - advance_inr
 
     @property
     def total_service_payable(self):
@@ -482,6 +480,16 @@ class StockIn(models.Model):
                          help_text='Exchange rate at time of this payment (USD→INR). 1 if INR.')
     payment_mode   = models.CharField(max_length=10, choices=PAYMENT_MODE_CHOICES, default='credit')
     notes          = models.TextField(blank=True)
+    # GST on material purchase (domestic suppliers only — not for imports from overseas)
+    gst_rate       = models.DecimalField(max_digits=5, decimal_places=2, default=0,
+                         help_text='GST % on material purchase (0 for imports — use igst_import instead)')
+    gst_amount     = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+                         help_text='GST amount on material — auto-calculated, editable. Part of supplier payable but NOT landed cost (ITC claimable)')
+    # Import duty fields (optional — for goods imported from overseas)
+    customs_duty   = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+                         help_text='Basic Customs Duty (BCD) paid at port of entry')
+    igst_import    = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+                         help_text='IGST paid at customs on import — added to landed cost')
     created_at     = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -493,12 +501,33 @@ class StockIn(models.Model):
 
     @property
     def items_total(self):
+        """Base material cost — GST-exclusive. Used for landed cost calculation."""
         return sum(i.amount for i in self.items.all())
 
     @property
+    def gst_on_material(self):
+        """GST on material purchase — owed to supplier but NOT added to landed cost (ITC claimable)."""
+        return self.gst_amount
+
+    @property
+    def material_total_payable(self):
+        """Total owed to material supplier = base cost + GST on material."""
+        return self.items_total + self.gst_amount
+
+    @property
     def grn_expenses_total(self):
-        """Sum of all GRNExpense amounts on this GRN."""
+        """Sum of base amounts of all GRNExpenses (excluding GST)."""
         return sum(e.amount for e in self.grn_expenses.all())
+
+    @property
+    def grn_expenses_gst_total(self):
+        """Sum of GST amounts on all GRNExpenses."""
+        return sum(e.gst_amount for e in self.grn_expenses.all())
+
+    @property
+    def grn_expenses_total_with_gst(self):
+        """Sum of (base + GST) for all GRNExpenses — the actual payable amount."""
+        return sum(e.total_with_gst for e in self.grn_expenses.all())
 
     @property
     def landing_expenses_total(self):
@@ -515,8 +544,12 @@ class StockIn(models.Model):
 
     @property
     def total_amount(self):
-        """Material + GRNExpenses (new) + legacy LandingExpenses — used for landed cost."""
-        return self.items_total + self.grn_expenses_total + self.landing_expenses_total
+        """Material + GRNExpenses (base+GST) + import duties + legacy landing expenses."""
+        return (self.items_total
+                + self.grn_expenses_total_with_gst
+                + self.customs_duty
+                + self.igst_import
+                + self.landing_expenses_total)
 
     @property
     def amount_paid_inr(self):
@@ -527,10 +560,11 @@ class StockIn(models.Model):
 
     @property
     def material_balance(self):
-        """What's owed to the MATERIAL SUPPLIER only — excludes landing expenses
-        which are tracked separately against their own service vendors."""
+        """What's owed to the MATERIAL SUPPLIER:
+        = base material cost + GST on material - payments made - PO advance
+        GST is part of the supplier invoice total, so it's part of the payable."""
         advance_inr = self.po.advance_paid_inr if self.po else Decimal('0')
-        return self.items_total - self.amount_paid_inr - advance_inr
+        return self.material_total_payable - self.amount_paid_inr - advance_inr
 
     @property
     def balance(self):
@@ -640,7 +674,12 @@ class GRNExpense(models.Model):
     date        = models.DateField()
     category    = models.CharField(max_length=15, choices=CATEGORY_CHOICES)
     description = models.CharField(max_length=200, blank=True)
-    amount      = models.DecimalField(max_digits=10, decimal_places=2)
+    amount      = models.DecimalField(max_digits=10, decimal_places=2,
+                      help_text='Base amount before GST')
+    gst_rate    = models.DecimalField(max_digits=5, decimal_places=2, default=0,
+                      help_text='GST % on this expense (0 if vendor is unregistered or exempt)')
+    gst_amount  = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+                      help_text='GST amount — auto-calculated from base × rate, editable')
     vendor      = models.ForeignKey(Supplier, on_delete=models.SET_NULL,
                       null=True, blank=True, related_name='grn_expenses',
                       help_text='Service vendor — creates a running payable')
@@ -655,24 +694,33 @@ class GRNExpense(models.Model):
         return f"{self.expense_number} — {self.get_category_display()} ₹{self.amount}"
 
     @property
+    def total_with_gst(self):
+        """Base amount + GST — this is the total bill amount owed to vendor."""
+        return self.amount + self.gst_amount
+
+    @property
     def balance(self):
-        return self.amount - self.amount_paid
+        """Outstanding = total bill (base + GST) - amount paid."""
+        return self.total_with_gst - self.amount_paid
 
     @property
     def is_paid(self):
         return self.balance <= Decimal('0.01')
 
     def recalc_landed_rates(self):
-        """Recalculate landed rate on all GRN items after expenses change."""
+        """Recalculate landed rate on all GRN items after expenses change.
+        Both base amount AND GST amount are included in landed cost."""
         grn = self.stock_in
         si_items = list(grn.items.all())
         if not si_items:
             return
-        # Total all expenses on this GRN (both GRNExpense and legacy LandingExpense)
+        # Total all expenses including GST (both new GRNExpense and legacy LandingExpense)
         total_expenses = (
-            sum(e.amount for e in grn.grn_expenses.all()) +
+            sum(e.total_with_gst for e in grn.grn_expenses.all()) +
             sum(e.amount for e in grn.landing_expenses.all())
         )
+        # Also include import duties
+        total_expenses += grn.customs_duty + grn.igst_import
         total_qty = sum(i.qty_sqm for i in si_items)
         if total_qty <= 0:
             return

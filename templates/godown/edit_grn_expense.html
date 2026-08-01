@@ -45,8 +45,8 @@
   </div>
   <div class="frow">
     <div class="fhalf">
-      <label class="fl">Amount (₹) *</label>
-      <input class="fc" name="amount" type="number" step="0.01" required value="{{ ge.amount }}">
+      <label class="fl">Base Amount (₹) * <span style="font-weight:400;color:var(--tm);">before GST</span></label>
+      <input class="fc" name="amount" id="edit-exp-amount" type="number" step="0.01" required value="{{ ge.amount }}" oninput="calcEditExpGST()">
     </div>
     <div class="fhalf">
       <label class="fl">Vendor</label>
@@ -56,6 +56,31 @@
         <option value="{{ v.pk }}" {% if ge.vendor_id == v.pk %}selected{% endif %}>{{ v.name }}</option>
         {% endfor %}
       </select>
+    </div>
+  </div>
+
+  <!-- GST section -->
+  <div style="background:var(--body-bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+    <div style="font-size:12px;font-weight:600;color:var(--tm);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em;">GST on this Expense <span style="font-weight:400;">(optional — only if vendor is GST registered)</span></div>
+    <div class="frow">
+      <div class="fthird">
+        <label class="fl">GST Rate (%)</label>
+        <select class="fc fsel" name="gst_rate" id="edit-gst-rate" onchange="calcEditExpGST()">
+          <option value="0" {% if ge.gst_rate == 0 %}selected{% endif %}>0% (No GST)</option>
+          <option value="5" {% if ge.gst_rate == 5 %}selected{% endif %}>5%</option>
+          <option value="12" {% if ge.gst_rate == 12 %}selected{% endif %}>12%</option>
+          <option value="18" {% if ge.gst_rate == 18 %}selected{% endif %}>18%</option>
+          <option value="28" {% if ge.gst_rate == 28 %}selected{% endif %}>28%</option>
+        </select>
+      </div>
+      <div class="fthird">
+        <label class="fl">GST Amount (₹) <span style="font-weight:400;color:var(--tm);">auto-calc, editable</span></label>
+        <input class="fc" name="gst_amount" id="edit-gst-amount" type="number" step="0.01" min="0" value="{{ ge.gst_amount }}" oninput="calcEditTotal()">
+      </div>
+      <div class="fthird">
+        <label class="fl">Total Bill (₹)</label>
+        <input class="fc" id="edit-total-bill" readonly style="background:#f0ebe3;font-weight:600;">
+      </div>
     </div>
   </div>
   <div class="frow">
@@ -70,4 +95,22 @@
   <button class="bw" type="submit"><i class="bi bi-check2"></i> Update Expense</button>
 </div>
 </form>
+{% endblock %}
+{% block extra_js %}
+<script>
+function calcEditExpGST() {
+  const base   = parseFloat(document.getElementById('edit-exp-amount')?.value || 0) || 0;
+  const rate   = parseFloat(document.getElementById('edit-gst-rate')?.value || 0) || 0;
+  const gstAmt = base * rate / 100;
+  document.getElementById('edit-gst-amount').value = gstAmt > 0 ? gstAmt.toFixed(2) : '0';
+  calcEditTotal();
+}
+function calcEditTotal() {
+  const base   = parseFloat(document.getElementById('edit-exp-amount')?.value || 0) || 0;
+  const gstAmt = parseFloat(document.getElementById('edit-gst-amount')?.value || 0) || 0;
+  const el = document.getElementById('edit-total-bill');
+  if (el) el.value = '₹' + (base + gstAmt).toLocaleString('en-IN', {maximumFractionDigits:2});
+}
+document.addEventListener('DOMContentLoaded', calcEditTotal);
+</script>
 {% endblock %}

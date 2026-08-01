@@ -57,7 +57,8 @@
         {% for c in customers %}
         <option value="{{ c.pk }}"
           data-credit-limit="{{ c.credit_limit|floatformat:0 }}"
-          data-outstanding="{{ c.computed_outstanding|floatformat:0 }}">
+          data-outstanding="{{ c.computed_outstanding|floatformat:0 }}"
+          data-state-code="{{ c.state_code }}">
           {{ c.name }}{% if c.credit_limit > 0 %} (Limit: ₹{{ c.credit_limit|floatformat:0 }}){% endif %}
         </option>
         {% endfor %}
@@ -88,14 +89,58 @@
   <div id="sale-items"></div>
 
   <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
       <span style="font-size:13px;color:var(--tm);">Taxable Amount</span>
       <span style="font-size:18px;font-weight:700;font-family:'Fraunces',serif;" id="sale-total">₹0</span>
     </div>
-    <div id="gst-row" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
-      <span style="font-size:12px;color:var(--tm);">GST ({{ godown_obj.gst_rate }}%)</span>
-      <span style="font-size:13px;color:var(--tm);" id="sale-gst">₹0</span>
+
+    <!-- GST Rate + IGST toggle — only shown for bill type -->
+    <div id="gst-controls" style="padding:10px 12px;background:var(--body-bg);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <div style="flex:1;min-width:120px;">
+          <label class="fl" style="margin-bottom:4px;">GST Rate</label>
+          <select class="fc fsel" name="gst_rate" id="gst-rate-sel" onchange="calcSaleTotal()" style="padding:6px 10px;">
+            <option value="0">0% (Exempt)</option>
+            <option value="5">5%</option>
+            <option value="12" selected>12%</option>
+            <option value="18">18%</option>
+            <option value="28">28%</option>
+          </select>
+        </div>
+        <div style="flex:2;min-width:160px;">
+          <label class="fl" style="margin-bottom:4px;">Tax Type</label>
+          <div style="display:flex;gap:8px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;border:1px solid var(--border);border-radius:6px;flex:1;" id="lbl-cgst">
+              <input type="radio" name="is_igst" value="0" id="radio-cgst" onchange="calcSaleTotal()" style="accent-color:var(--wood-600);">
+              <div><div style="font-size:12px;font-weight:600;">CGST + SGST</div><div style="font-size:10px;color:var(--tm);">Intra-state</div></div>
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 10px;border:1px solid var(--border);border-radius:6px;flex:1;" id="lbl-igst">
+              <input type="radio" name="is_igst" value="1" id="radio-igst" onchange="calcSaleTotal()" style="accent-color:var(--wood-600);">
+              <div><div style="font-size:12px;font-weight:600;">IGST</div><div style="font-size:10px;color:var(--tm);">Inter-state</div></div>
+            </label>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <!-- GST breakdown rows -->
+    <div id="gst-row-cgst" style="display:none;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:12px;color:var(--tm);" id="cgst-label">CGST (6%)</span>
+        <span style="font-size:13px;color:var(--tm);" id="sale-cgst">₹0</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:12px;color:var(--tm);" id="sgst-label">SGST (6%)</span>
+        <span style="font-size:13px;color:var(--tm);" id="sale-sgst">₹0</span>
+      </div>
+    </div>
+    <div id="gst-row-igst" style="display:none;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:12px;color:var(--tm);" id="igst-label">IGST (12%)</span>
+        <span style="font-size:13px;color:var(--tm);" id="sale-igst">₹0</span>
+      </div>
+    </div>
+
     <div id="grand-row" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding-top:8px;border-top:1px solid var(--border);">
       <span style="font-size:13px;font-weight:600;color:var(--ts);">Grand Total (incl. GST)</span>
       <span style="font-size:20px;font-weight:700;font-family:'Fraunces',serif;color:var(--wood-800);" id="sale-grand">₹0</span>
@@ -204,7 +249,29 @@
 
 {% block extra_js %}
 <script>
-const GST_RATE = {{ godown_obj.gst_rate|floatformat:2 }};
+const GST_RATE_DEFAULT = {{ godown_obj.gst_rate|floatformat:2 }};
+const GODOWN_STATE     = "{{ godown_obj.state_code }}";
+
+// Set default GST rate from godown setting
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = document.getElementById('gst-rate-sel');
+  if (sel) {
+    // Find closest matching option to godown default
+    const opts = Array.from(sel.options).map(o => parseFloat(o.value));
+    const closest = opts.reduce((a, b) => Math.abs(b - GST_RATE_DEFAULT) < Math.abs(a - GST_RATE_DEFAULT) ? b : a);
+    sel.value = closest;
+  }
+});
+
+function getGSTRate() {
+  const isBill = document.getElementById('type-bill').checked;
+  if (!isBill) return 0;
+  return parseFloat(document.getElementById('gst-rate-sel')?.value || 0);
+}
+
+function isIGST() {
+  return document.getElementById('radio-igst')?.checked;
+}
 
 // Product data — stock stored and displayed in sq.m (no conversion needed)
 const PRODUCTS = {
@@ -374,20 +441,49 @@ function calcSaleLine(li) {
 }
 
 function calcSaleTotal() {
-  const isBill = document.getElementById('type-bill').checked;
-  let taxable = 0;
+  const isBill  = document.getElementById('type-bill').checked;
+  const gstRate = getGSTRate();
+  const igst    = isIGST();
+  let taxable   = 0;
   document.querySelectorAll('#sale-items .li-amt').forEach(a => {
     taxable += parseFloat((a.value || '0').replace(/,/g, '')) || 0;
   });
-  const gst   = isBill ? taxable * GST_RATE / 100 : 0;
-  const grand = taxable + gst;
+  const gstAmt  = isBill ? taxable * gstRate / 100 : 0;
+  const half    = gstAmt / 2;
+  const grand   = taxable + gstAmt;
+  const fmt = v => '₹' + v.toLocaleString('en-IN', {maximumFractionDigits:0});
 
-  document.getElementById('sale-total').textContent =
-    '₹' + taxable.toLocaleString('en-IN', {maximumFractionDigits:0});
-  document.getElementById('sale-gst').textContent =
-    '₹' + gst.toLocaleString('en-IN', {maximumFractionDigits:0});
-  document.getElementById('sale-grand').textContent =
-    '₹' + grand.toLocaleString('en-IN', {maximumFractionDigits:0});
+  document.getElementById('sale-total').textContent = fmt(taxable);
+  document.getElementById('sale-grand').textContent = fmt(grand);
+
+  // Show/hide GST controls and breakdown
+  const controls = document.getElementById('gst-controls');
+  if (controls) controls.style.display = isBill ? '' : 'none';
+
+  const cgstRow = document.getElementById('gst-row-cgst');
+  const igstRow = document.getElementById('gst-row-igst');
+
+  if (!isBill || gstRate === 0) {
+    if (cgstRow) cgstRow.style.display = 'none';
+    if (igstRow) igstRow.style.display = 'none';
+  } else if (igst) {
+    if (cgstRow) cgstRow.style.display = 'none';
+    if (igstRow) igstRow.style.display = '';
+    document.getElementById('igst-label').textContent = `IGST (${gstRate}%)`;
+    document.getElementById('sale-igst').textContent  = fmt(gstAmt);
+  } else {
+    if (cgstRow) cgstRow.style.display = '';
+    if (igstRow) igstRow.style.display = 'none';
+    const half_pct = gstRate / 2;
+    document.getElementById('cgst-label').textContent = `CGST (${half_pct}%)`;
+    document.getElementById('sgst-label').textContent = `SGST (${half_pct}%)`;
+    document.getElementById('sale-cgst').textContent  = fmt(half);
+    document.getElementById('sale-sgst').textContent  = fmt(half);
+  }
+
+  // Update radio border highlights
+  document.getElementById('lbl-cgst').style.borderColor = (!igst && isBill) ? 'var(--wood-400)' : 'var(--border)';
+  document.getElementById('lbl-igst').style.borderColor = ( igst && isBill) ? 'var(--wood-400)' : 'var(--border)';
 
   checkCreditLimitLive();
 }
@@ -400,16 +496,13 @@ function onSaleTypeChange() {
   const isBill = document.getElementById('type-bill').checked;
   document.getElementById('type-bill-label').style.borderColor = isBill ? 'var(--wood-400)' : 'var(--border)';
   document.getElementById('type-cash-label').style.borderColor = !isBill ? 'var(--wood-400)' : 'var(--border)';
-  // Update bill number preview
   const numInput = document.getElementById('bill-number-input');
   if (numInput) {
     const suggested = isBill ? NEXT_BILL_NUM : NEXT_CM_NUM;
     numInput.placeholder = suggested;
     numInput.value = suggested;
   }
-  // Show e-Way Bill card only for tax invoices
   document.getElementById('eway-card').style.display = isBill ? '' : 'none';
-  // Recalculate totals (GST changes)
   calcSaleTotal();
 }
 
@@ -424,10 +517,19 @@ function toggleEway() {
   btn.innerHTML         = `<i class="${chevron.className}" id="eway-chevron"></i> ${open ? 'Hide Details' : 'Add Details'}`;
 }
 
-// ── Credit limit ──────────────────────────────────────────────────
+// ── Customer change ───────────────────────────────────────────────
 function onCustomerChange(sel) {
   const opt  = sel.options[sel.selectedIndex];
   const bar  = document.getElementById('credit-limit-bar');
+
+  // Auto-detect IGST: if customer state differs from godown state → IGST
+  const custState = opt.getAttribute('data-state-code') || '';
+  if (custState && GODOWN_STATE && custState !== GODOWN_STATE) {
+    document.getElementById('radio-igst').checked = true;
+  } else if (custState) {
+    document.getElementById('radio-cgst').checked = true;
+  }
+  calcSaleTotal();
   if (!sel.value) { bar.style.display = 'none'; return; }
 
   const limit       = parseFloat(opt.dataset.creditLimit) || 0;

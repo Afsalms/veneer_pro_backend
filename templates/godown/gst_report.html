@@ -2,45 +2,200 @@
 {% block title %}GST Report{% endblock %}
 {% block page_title %}GST Report{% endblock %}
 {% block content %}
-<div class="cv" style="margin-bottom:16px;background:var(--wood-100);border-color:var(--wood-200);">
-  <h6 style="color:var(--wood-800);margin-bottom:10px;"><i class="bi bi-info-circle"></i> Understanding Your GST</h6>
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;font-size:12px;color:var(--wood-800);line-height:1.8;">
-    <div><strong>📥 Output Tax (Collected)</strong><br>GST you charge on every sale invoice at {{ gst_rate }}%. Customer pays this — you hold it for govt.</div>
-    <div><strong>🔄 Input Tax Credit (ITC)</strong><br>GST your suppliers charged on your purchases. You deduct this from what you owe.</div>
-    <div><strong>🏛️ Net Payable to Govt</strong><br>Output Tax − ITC = Amount to pay via GST portal. File GSTR-3B monthly.</div>
+<div class="fp-header">
+  <span class="fp-title">GST Report</span>
+  <button class="bs" onclick="window.print()" style="margin-left:auto;"><i class="bi bi-printer"></i> Print</button>
+</div>
+
+<!-- Date filter -->
+<form method="get" class="cv" style="margin-bottom:14px;">
+  <div class="frow" style="align-items:flex-end;">
+    <div class="fthird"><label class="fl">From Date</label><input class="fc" name="from" type="date" value="{{ from_date }}"></div>
+    <div class="fthird"><label class="fl">To Date</label><input class="fc" name="to" type="date" value="{{ to_date }}"></div>
+    <div class="fthird" style="display:flex;gap:8px;">
+      <button class="bw" type="submit" style="flex:1;">Apply Filter</button>
+      <a class="bs" href="{% url 'gst_report' %}">Clear</a>
+    </div>
+  </div>
+</form>
+
+<!-- Summary Cards -->
+<div class="sgrid cols-3" style="margin-bottom:16px;">
+  <div class="sc" style="background:#fdecea;border-color:#f5c6cb;">
+    <div><div class="sl" style="color:#b33a36;">Output GST (Collected from Sales)</div>
+    <div class="sv" style="color:#b33a36;">₹{{ total_output_gst|floatformat:0 }}</div>
+    <div style="font-size:11px;color:#b33a36;margin-top:4px;">CGST ₹{{ total_cgst_out|floatformat:0 }} + SGST ₹{{ total_sgst_out|floatformat:0 }} + IGST ₹{{ total_igst_out|floatformat:0 }}</div>
+    </div>
+  </div>
+  <div class="sc" style="background:#eaf5e8;border-color:#c3e6cb;">
+    <div><div class="sl" style="color:#2d6a27;">Input GST (Paid on Purchases)</div>
+    <div class="sv" style="color:#2d6a27;">₹{{ total_input_gst|floatformat:0 }}</div>
+    <div style="font-size:11px;color:#2d6a27;margin-top:4px;">Material ₹{{ total_gst_in_mat|floatformat:0 }} + Expenses ₹{{ total_gst_in_exp|floatformat:0 }} + Import IGST ₹{{ total_igst_import|floatformat:0 }}</div>
+    </div>
+  </div>
+  <div class="sc" style="background:{% if net_payable > 0 %}#fdecea;border-color:#f5c6cb{% else %}#eaf5e8;border-color:#c3e6cb{% endif %};">
+    <div><div class="sl">Net GST {% if net_payable > 0 %}Payable{% else %}Refundable{% endif %}</div>
+    <div class="sv" style="color:{% if net_payable > 0 %}#b33a36{% else %}#2d6a27{% endif %};">₹{{ net_payable|floatformat:0 }}</div>
+    <div style="font-size:11px;color:var(--tm);margin-top:4px;">Output - Input = Net</div>
+    </div>
   </div>
 </div>
 
-<div class="cv">
-  <div class="ch"><h6>Monthly GST Summary — Last 12 Months</h6></div>
-  <table class="tv">
-    <thead>
-      <tr>
-        <th>Month</th>
-        <th class="right">Taxable Sales</th>
-        <th class="right">GST Collected (Output)</th>
-        <th class="right">Purchase Value</th>
-        <th class="right">ITC Available (Input)</th>
-        <th class="right">Net Payable to Govt</th>
-        <th class="right">Savings via ITC</th>
-      </tr>
-    </thead>
+<!-- OUTPUT GST: Sales -->
+<div class="cv" style="margin-bottom:16px;padding:0;overflow:hidden;">
+  <div class="ch" style="padding:12px 16px;"><h6>Output GST — Sales (Tax Invoices)</h6>
+    <span style="font-size:12px;color:var(--tm);">{{ output_rows|length }} bill(s)</span>
+  </div>
+  <table class="dt" style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:var(--wood-50);">
+      <th style="padding:8px 14px;text-align:left;">Date</th>
+      <th style="padding:8px 14px;text-align:left;">Bill No</th>
+      <th style="padding:8px 14px;text-align:left;">Customer</th>
+      <th style="padding:8px 14px;text-align:right;">Taxable</th>
+      <th style="padding:8px 14px;text-align:center;">Rate</th>
+      <th style="padding:8px 14px;text-align:right;">CGST</th>
+      <th style="padding:8px 14px;text-align:right;">SGST</th>
+      <th style="padding:8px 14px;text-align:right;">IGST</th>
+      <th style="padding:8px 14px;text-align:right;">Total GST</th>
+    </tr></thead>
     <tbody>
-    {% for m in months %}
-    <tr>
-      <td style="font-weight:500;">{{ m.month }}</td>
-      <td style="text-align:right;">₹{{ m.taxable_sales|floatformat:0 }}</td>
-      <td style="text-align:right;color:#2d6a27;font-weight:500;">₹{{ m.gst_collected|floatformat:0 }}</td>
-      <td style="text-align:right;color:var(--tm);">₹{{ m.purchase_val|floatformat:0 }}</td>
-      <td style="text-align:right;color:#2a5aaa;font-weight:500;">₹{{ m.itc|floatformat:0 }}</td>
-      <td style="text-align:right;font-weight:700;color:{% if m.net_payable > 0 %}#b33a36{% else %}#2d6a27{% endif %};">₹{{ m.net_payable|floatformat:0 }}</td>
-      <td style="text-align:right;color:#2a5aaa;">₹{{ m.itc|floatformat:0 }}</td>
+    {% for row in output_rows %}
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 14px;color:var(--tm);">{{ row.date }}</td>
+      <td style="padding:8px 14px;"><a href="{% url 'sale_detail' row.sale_obj.pk %}" style="color:var(--wood-600);">{{ row.ref }}</a></td>
+      <td style="padding:8px 14px;">{{ row.party }}</td>
+      <td style="padding:8px 14px;text-align:right;">₹{{ row.taxable|floatformat:0 }}</td>
+      <td style="padding:8px 14px;text-align:center;"><span class="chip">{{ row.gst_rate }}%</span></td>
+      <td style="padding:8px 14px;text-align:right;">{% if not row.is_igst %}₹{{ row.cgst|floatformat:0 }}{% else %}—{% endif %}</td>
+      <td style="padding:8px 14px;text-align:right;">{% if not row.is_igst %}₹{{ row.sgst|floatformat:0 }}{% else %}—{% endif %}</td>
+      <td style="padding:8px 14px;text-align:right;">{% if row.is_igst %}₹{{ row.igst|floatformat:0 }}{% else %}—{% endif %}</td>
+      <td style="padding:8px 14px;text-align:right;font-weight:600;color:#b33a36;">₹{{ row.total_gst|floatformat:0 }}</td>
     </tr>
+    {% empty %}
+    <tr><td colspan="9" style="padding:30px;text-align:center;color:var(--tm);">No tax invoices in this period.</td></tr>
     {% endfor %}
+    <tr style="background:var(--wood-50);font-weight:700;">
+      <td colspan="3" style="padding:10px 14px;">Total</td>
+      <td style="padding:10px 14px;text-align:right;">₹{{ total_taxable_out|floatformat:0 }}</td>
+      <td></td>
+      <td style="padding:10px 14px;text-align:right;">₹{{ total_cgst_out|floatformat:0 }}</td>
+      <td style="padding:10px 14px;text-align:right;">₹{{ total_sgst_out|floatformat:0 }}</td>
+      <td style="padding:10px 14px;text-align:right;">₹{{ total_igst_out|floatformat:0 }}</td>
+      <td style="padding:10px 14px;text-align:right;color:#b33a36;">₹{{ total_output_gst|floatformat:0 }}</td>
+    </tr>
     </tbody>
   </table>
-  <div style="margin-top:12px;font-size:11px;color:var(--tm);padding:10px 12px;background:var(--body-bg);border-radius:8px;">
-    ⚠️ This is an estimate based on purchase values at {{ gst_rate }}% GST rate. Actual ITC depends on GST-registered supplier invoices (GSTR-2A). Consult your GST practitioner for filing.
-  </div>
 </div>
+
+<!-- INPUT GST: Material Purchases -->
+{% if input_material_rows %}
+<div class="cv" style="margin-bottom:16px;padding:0;overflow:hidden;">
+  <div class="ch" style="padding:12px 16px;"><h6>Input GST — Material Purchases (ITC)</h6>
+    <span style="font-size:12px;color:var(--tm);">{{ input_material_rows|length }} GRN(s)</span>
+  </div>
+  <table class="dt" style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:var(--wood-50);">
+      <th style="padding:8px 14px;text-align:left;">Date</th>
+      <th style="padding:8px 14px;text-align:left;">GRN</th>
+      <th style="padding:8px 14px;text-align:left;">Supplier</th>
+      <th style="padding:8px 14px;text-align:right;">Base (Material)</th>
+      <th style="padding:8px 14px;text-align:center;">Rate</th>
+      <th style="padding:8px 14px;text-align:right;">GST (ITC)</th>
+    </tr></thead>
+    <tbody>
+    {% for row in input_material_rows %}
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 14px;color:var(--tm);">{{ row.date }}</td>
+      <td style="padding:8px 14px;color:var(--wood-600);">{{ row.ref }}</td>
+      <td style="padding:8px 14px;">{{ row.party }}</td>
+      <td style="padding:8px 14px;text-align:right;">₹{{ row.base|floatformat:0 }}</td>
+      <td style="padding:8px 14px;text-align:center;"><span class="chip">{{ row.gst_rate|floatformat:0 }}%</span></td>
+      <td style="padding:8px 14px;text-align:right;font-weight:600;color:#2d6a27;">₹{{ row.gst_amt|floatformat:0 }}</td>
+    </tr>
+    {% endfor %}
+    <tr style="background:var(--wood-50);font-weight:700;">
+      <td colspan="3" style="padding:10px 14px;">Total</td>
+      <td style="padding:10px 14px;text-align:right;">₹{{ total_base_in_mat|floatformat:0 }}</td>
+      <td></td>
+      <td style="padding:10px 14px;text-align:right;color:#2d6a27;">₹{{ total_gst_in_mat|floatformat:0 }}</td>
+    </tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- INPUT GST: Expenses -->
+{% if input_expense_rows %}
+<div class="cv" style="margin-bottom:16px;padding:0;overflow:hidden;">
+  <div class="ch" style="padding:12px 16px;"><h6>Input GST — GRN Expenses</h6>
+    <span style="font-size:12px;color:var(--tm);">{{ input_expense_rows|length }} expense(s)</span>
+  </div>
+  <table class="dt" style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:var(--wood-50);">
+      <th style="padding:8px 14px;text-align:left;">Date</th>
+      <th style="padding:8px 14px;text-align:left;">Expense No</th>
+      <th style="padding:8px 14px;text-align:left;">GRN</th>
+      <th style="padding:8px 14px;text-align:left;">Vendor</th>
+      <th style="padding:8px 14px;text-align:left;">Category</th>
+      <th style="padding:8px 14px;text-align:right;">Base</th>
+      <th style="padding:8px 14px;text-align:center;">Rate</th>
+      <th style="padding:8px 14px;text-align:right;">GST (ITC)</th>
+    </tr></thead>
+    <tbody>
+    {% for row in input_expense_rows %}
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 14px;color:var(--tm);">{{ row.date }}</td>
+      <td style="padding:8px 14px;font-family:monospace;color:var(--wood-600);">{{ row.ref }}</td>
+      <td style="padding:8px 14px;color:var(--wood-600);">{{ row.grn }}</td>
+      <td style="padding:8px 14px;">{{ row.party }}</td>
+      <td style="padding:8px 14px;"><span class="chip">{{ row.category }}</span></td>
+      <td style="padding:8px 14px;text-align:right;">₹{{ row.base|floatformat:0 }}</td>
+      <td style="padding:8px 14px;text-align:center;"><span class="chip">{{ row.gst_rate }}%</span></td>
+      <td style="padding:8px 14px;text-align:right;font-weight:600;color:#2d6a27;">₹{{ row.gst_amt|floatformat:0 }}</td>
+    </tr>
+    {% endfor %}
+    <tr style="background:var(--wood-50);font-weight:700;">
+      <td colspan="5" style="padding:10px 14px;">Total</td>
+      <td style="padding:10px 14px;text-align:right;">₹{{ total_base_in_exp|floatformat:0 }}</td>
+      <td></td>
+      <td style="padding:10px 14px;text-align:right;color:#2d6a27;">₹{{ total_gst_in_exp|floatformat:0 }}</td>
+    </tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- INPUT GST: Import duties -->
+{% if input_import_rows %}
+<div class="cv" style="margin-bottom:16px;padding:0;overflow:hidden;">
+  <div class="ch" style="padding:12px 16px;"><h6>Input GST — IGST on Imports</h6>
+    <span style="font-size:12px;color:var(--tm);">{{ input_import_rows|length }} GRN(s)</span>
+  </div>
+  <table class="dt" style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:var(--wood-50);">
+      <th style="padding:8px 14px;text-align:left;">Date</th>
+      <th style="padding:8px 14px;text-align:left;">GRN</th>
+      <th style="padding:8px 14px;text-align:left;">Supplier</th>
+      <th style="padding:8px 14px;text-align:right;">Customs Duty (BCD)</th>
+      <th style="padding:8px 14px;text-align:right;">IGST on Import (ITC)</th>
+    </tr></thead>
+    <tbody>
+    {% for row in input_import_rows %}
+    <tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 14px;color:var(--tm);">{{ row.date }}</td>
+      <td style="padding:8px 14px;color:var(--wood-600);">{{ row.ref }}</td>
+      <td style="padding:8px 14px;">{{ row.party }}</td>
+      <td style="padding:8px 14px;text-align:right;">{% if row.customs_duty %}₹{{ row.customs_duty|floatformat:0 }}{% else %}—{% endif %}</td>
+      <td style="padding:8px 14px;text-align:right;font-weight:600;color:#2d6a27;">{% if row.igst_import %}₹{{ row.igst_import|floatformat:0 }}{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+    <tr style="background:var(--wood-50);font-weight:700;">
+      <td colspan="3" style="padding:10px 14px;">Total</td>
+      <td style="padding:10px 14px;text-align:right;">₹{{ total_customs_duty|floatformat:0 }}</td>
+      <td style="padding:10px 14px;text-align:right;color:#2d6a27;">₹{{ total_igst_import|floatformat:0 }}</td>
+    </tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
 {% endblock %}

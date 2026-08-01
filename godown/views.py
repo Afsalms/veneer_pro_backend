@@ -601,10 +601,11 @@ def suppliers(request):
         # Material payable — items only, never landing expenses
         grns = _SI.objects.filter(supplier=sup, godown=godown).prefetch_related('items')
         pos  = _PO.objects.filter(supplier=sup, godown=godown)
-        items_total = sum(i.amount for g in grns for i in g.items.all())
-        paid_inr    = sum(g.amount_paid_inr for g in grns)
-        advance_inr = sum(p.advance_paid_inr for p in pos)
-        sup.db_total_payable = items_total - paid_inr - advance_inr
+        items_total      = sum(g.items_total for g in grns)
+        gst_on_material  = sum(g.gst_amount for g in grns)
+        paid_inr         = sum(g.amount_paid_inr for g in grns)
+        advance_inr      = sum(p.advance_paid_inr for p in pos)
+        sup.db_total_payable = items_total + gst_on_material - paid_inr - advance_inr
 
         # Service payable — landing expenses where this supplier is the vendor
         sup.db_service_payable = sup.total_service_payable
@@ -1127,26 +1128,18 @@ def add_stock_in(request):
         if not request.POST.get('confirmed'):
             supplier = suppliers_list.get(pk=request.POST['supplier'])
             items_total = sum(q*r for p,q,r in line_items)
-            # Landing expenses
-            exp_cats    = request.POST.getlist('exp_cat[]')
-            exp_amts    = request.POST.getlist('exp_amt[]')
-            exp_vendors = request.POST.getlist('exp_vendor[]')
-            landing_total = Decimal('0')
-            landing_rows  = []
-            for j, cat in enumerate(exp_cats):
-                amt_str = exp_amts[j] if j < len(exp_amts) else ''
-                if not cat or not amt_str: continue
-                try: amt = Decimal(amt_str)
-                except: continue
-                if amt <= 0: continue
-                landing_total += amt
-                vendor_id = exp_vendors[j] if j < len(exp_vendors) else ''
-                vendor_label = ''
-                if vendor_id:
-                    try: vendor_label = f' → {Supplier.objects.get(pk=vendor_id).name}'
-                    except: pass
-                landing_rows.append([f'{cat}{vendor_label}', '', '', f'₹{amt:,.2f}'])
-            grand = items_total + landing_total
+            # GST on material
+            try:    gst_rate_prev   = Decimal(request.POST.get('gst_rate','0') or '0')
+            except: gst_rate_prev   = Decimal('0')
+            try:    gst_amount_prev = Decimal(request.POST.get('gst_amount','0') or '0')
+            except: gst_amount_prev = Decimal('0')
+            # Import duties
+            try:    customs_duty_prev = Decimal(request.POST.get('customs_duty','0') or '0')
+            except: customs_duty_prev = Decimal('0')
+            try:    igst_import_prev  = Decimal(request.POST.get('igst_import','0') or '0')
+            except: igst_import_prev  = Decimal('0')
+
+            grand = items_total + gst_amount_prev + customs_duty_prev + igst_import_prev
             amtp  = Decimal(request.POST.get('amount_paid',0) or 0)
             header = [
                 ('GRN Number', request.POST.get('grn_number') or 'Auto'),
@@ -1157,20 +1150,22 @@ def add_stock_in(request):
             if request.POST.get('invoice_number'):
                 header.append(('Supplier Invoice', request.POST.get('invoice_number')))
             rows = [[p.display_name, f'{q:.4f} sq.m', f'₹{r:.2f}/sq.m', f'₹{q*r:,.2f}']
-                    for p,q,r in line_items] + landing_rows
-            totals = [
-                ('Items Total', f'₹{items_total:,.2f}', False),
-            ]
-            if landing_total > 0:
-                totals.append(('Landing Expenses', f'₹{landing_total:,.2f}', False))
-            totals.append(('Grand Total', f'₹{grand:,.2f}', True))
+                    for p,q,r in line_items]
+            totals = [('Items Total (Base)', f'₹{items_total:,.2f}', False)]
+            if gst_amount_prev > 0:
+                totals.append((f'GST on Material ({gst_rate_prev:g}%)', f'₹{gst_amount_prev:,.2f}', False))
+            if customs_duty_prev > 0:
+                totals.append(('Customs Duty (BCD)', f'₹{customs_duty_prev:,.2f}', False))
+            if igst_import_prev > 0:
+                totals.append(('IGST on Import', f'₹{igst_import_prev:,.2f}', False))
+            totals.append(('Total Invoice', f'₹{grand:,.2f}', True))
             if amtp > 0:
                 totals.append(('Amount Paid', f'₹{amtp:,.2f}', False))
                 totals.append(('Balance Payable', f'₹{max(Decimal(0),grand-amtp):,.2f}', False))
             return _preview_response(request,
                 title=f'GRN — {supplier.name}', icon='📦',
                 header=header, items=rows,
-                item_cols=['Product / Expense', 'Quantity', 'Rate', 'Amount'],
+                item_cols=['Product', 'Quantity', 'Rate', 'Amount'],
                 totals=totals, confirm_url=request.path)
 
         # ── Confirmed — save ──────────────────────────────────────
@@ -1195,6 +1190,10 @@ def add_stock_in(request):
                 exchange_rate=pay_rate if pay_currency=='USD' else Decimal('1'),
                 payment_mode=request.POST.get('payment_mode','credit'),
                 notes=request.POST.get('notes',''),
+                gst_rate=Decimal(request.POST.get('gst_rate','0') or '0'),
+                gst_amount=Decimal(request.POST.get('gst_amount','0') or '0'),
+                customs_duty=Decimal(request.POST.get('customs_duty','0') or '0'),
+                igst_import=Decimal(request.POST.get('igst_import','0') or '0'),
             )
             si_items = _save_grn_items(request, grn, products_list)
             _save_landing_expenses(request, grn)
@@ -1385,13 +1384,14 @@ def add_sale(request):
                 'active':'sales','customers':customers_list,'products':products_list,'godown_obj':godown
             }))
 
-        # ── PREVIEW: show summary before saving ──────────────────
         if not request.POST.get('confirmed'):
-            customer = customers_list.get(pk=request.POST['customer'])
+            customer  = customers_list.get(pk=request.POST['customer'])
             sale_type = request.POST.get('sale_type', 'bill')
-            gst_rate  = Decimal('0') if sale_type == 'cash_memo' else godown.gst_rate
+            gst_rate  = Decimal('0') if sale_type == 'cash_memo' else Decimal(request.POST.get('gst_rate', godown.gst_rate) or godown.gst_rate)
+            is_igst   = request.POST.get('is_igst') == '1'
             taxable   = sum(qty * rate for _, _, _, qty, rate in line_items)
             gst_amt   = (taxable * gst_rate / 100).quantize(Decimal('0.01'))
+            half      = (gst_amt / 2).quantize(Decimal('0.01'))
             grand     = taxable + gst_amt
             amr       = Decimal(request.POST.get('amount_received', 0) or 0)
             header = [
@@ -1404,17 +1404,20 @@ def add_sale(request):
             if request.POST.get('due_date'):
                 header.append(('Due Date', request.POST.get('due_date')))
             items_rows = [
-                [p.display_name,
+                [p.display_name_sale,
                  f'{qty:.4f} sq.m',
                  f'₹{rate:.2f}/sq.m',
                  f'₹{qty*rate:,.2f}']
                 for _, _, p, qty, rate in line_items
             ]
-            totals = [
-                ('Taxable Amount', f'₹{taxable:,.2f}', False),
-                (f'GST ({gst_rate}%)', f'₹{gst_amt:,.2f}', False),
-                ('Grand Total', f'₹{grand:,.2f}', True),
-            ]
+            totals = [('Taxable Amount', f'₹{taxable:,.2f}', False)]
+            if gst_rate > 0:
+                if is_igst:
+                    totals.append((f'IGST ({gst_rate}%)', f'₹{gst_amt:,.2f}', False))
+                else:
+                    totals.append((f'CGST ({gst_rate/2}%)', f'₹{half:,.2f}', False))
+                    totals.append((f'SGST ({gst_rate/2}%)', f'₹{half:,.2f}', False))
+            totals.append(('Grand Total', f'₹{grand:,.2f}', True))
             if amr > 0:
                 totals.append(('Amount Received', f'₹{amr:,.2f}', False))
                 totals.append(('Balance Due', f'₹{max(Decimal(0), grand-amr):,.2f}', False))
@@ -1458,10 +1461,19 @@ def add_sale(request):
             custom_num  = request.POST.get('bill_number', '').strip()
             if custom_num:
                 bill_number = custom_num
-                # Still advance the sequence so next auto number doesn't collide
                 GodownSequence.next(godown, seq_type)
             else:
                 bill_number = GodownSequence.format_number(godown, seq_type)
+            # GST rate: cash memo = 0%, bill = user-selected rate (default godown rate)
+            if sale_type == 'cash_memo':
+                sale_gst_rate = Decimal('0')
+                sale_is_igst  = False
+            else:
+                try:
+                    sale_gst_rate = Decimal(request.POST.get('gst_rate', godown.gst_rate) or godown.gst_rate)
+                except Exception:
+                    sale_gst_rate = godown.gst_rate
+                sale_is_igst = request.POST.get('is_igst') == '1'
             sale = Sale.objects.create(
                 godown=godown, bill_number=bill_number,
                 sale_type=sale_type,
@@ -1472,8 +1484,8 @@ def add_sale(request):
                 po_reference=request.POST.get('po_reference',''),
                 amount_received=request.POST.get('amount_received',0) or 0,
                 payment_mode=request.POST.get('payment_mode','credit'),
-                # Cash memo has 0% GST (no formal invoice)
-                gst_rate=Decimal('0') if sale_type == 'cash_memo' else godown.gst_rate,
+                gst_rate=sale_gst_rate,
+                is_igst=sale_is_igst,
                 vehicle_number=request.POST.get('vehicle_number',''),
                 transport_distance=request.POST.get('transport_distance') or None,
                 transporter_id=request.POST.get('transporter_id',''),
@@ -2533,31 +2545,6 @@ def convert_to_sale(request, pk):
 # Import missing models at top
 
 
-# ── GST Report Page ───────────────────────────────────────────────
-@admin_req
-def gst_report(request):
-    godown = get_godown(request)
-    today  = timezone.now().date()
-    # Build month-by-month GST data for last 12 months
-    months = []
-    for i in range(11, -1, -1):
-        d = (today.replace(day=1) - timedelta(days=i*28)).replace(day=1)
-        m, y = d.month, d.year
-        sales = list(Sale.objects.filter(godown=godown, date__month=m, date__year=y).prefetch_related('items'))
-        purchases = list(StockIn.objects.filter(godown=godown, date__month=m, date__year=y).prefetch_related('items'))
-        taxable_sales = sum(s.taxable_amount for s in sales)
-        gst_collected = sum(s.gst_amount for s in sales)
-        purchase_val  = sum(g.items_total for g in purchases)
-        itc           = (purchase_val * godown.gst_rate / 100).quantize(Decimal('0.01'))
-        net_payable   = max(Decimal('0'), gst_collected - itc)
-        months.append({
-            'month': d.strftime('%b %Y'), 'taxable_sales': taxable_sales,
-            'gst_collected': gst_collected, 'purchase_val': purchase_val,
-            'itc': itc, 'net_payable': net_payable,
-        })
-    return render(request, 'godown/gst_report.html', ctx(request, {
-        'active': 'analytics', 'months': months, 'gst_rate': godown.gst_rate,
-    }))
 
 
 # ── Lookup table views ────────────────────────────────────────────
@@ -2753,6 +2740,10 @@ def edit_grn(request, pk):
             grn.date           = date_str
             grn.invoice_number = request.POST.get('invoice_number', '')
             grn.notes          = request.POST.get('notes', '')
+            grn.gst_rate       = Decimal(request.POST.get('gst_rate', '0') or '0')
+            grn.gst_amount     = Decimal(request.POST.get('gst_amount', '0') or '0')
+            grn.customs_duty   = Decimal(request.POST.get('customs_duty', '0') or '0')
+            grn.igst_import    = Decimal(request.POST.get('igst_import', '0') or '0')
             # Step 1: reverse old stock additions (GRN added stock, so remove it)
             for old in grn.items.all():
                 Product.objects.filter(pk=old.product_id).update(
@@ -2903,6 +2894,13 @@ def edit_sale(request, pk):
             sale.ship_pincode = request.POST.get('ship_pincode', '')
             sale.ship_state   = request.POST.get('ship_state', '')
             sale.notes        = request.POST.get('notes', '')
+            # GST rate — allow editing per sale
+            if sale.sale_type != 'cash_memo':
+                try:
+                    sale.gst_rate = Decimal(request.POST.get('gst_rate', sale.gst_rate) or sale.gst_rate)
+                except Exception:
+                    pass
+                sale.is_igst = request.POST.get('is_igst') == '1'
             # Restore stock from OLD items atomically
             for old in sale.items.all():
                 Product.objects.filter(pk=old.product_id).update(
@@ -3826,11 +3824,16 @@ def _eligible_grns(godown):
 
 
 def _recalc_grn_landed(grn):
-    """Recalculate landed rate on all items of a GRN based on total GRNExpense amounts."""
+    """Recalculate landed rate on all items of a GRN.
+    Includes: base expense + GST on expenses + customs duty + IGST on import."""
     si_items = list(grn.items.all())
     if not si_items:
         return
-    total_expenses = sum(e.amount for e in grn.grn_expenses.all())
+    total_expenses = (
+        sum(e.total_with_gst for e in grn.grn_expenses.all()) +
+        sum(e.amount for e in grn.landing_expenses.all()) +
+        grn.customs_duty + grn.igst_import
+    )
     total_qty = sum(i.qty_sqm for i in si_items)
     if total_qty <= 0:
         return
@@ -3862,10 +3865,10 @@ def add_grn_expense(request, grn_pk=None):
 
     if request.method == 'POST':
         errors = []
-        grn_id   = request.POST.get('grn', '').strip()
-        category = request.POST.get('category', '').strip()
-        date_str = request.POST.get('date', '').strip()
-        amt_str  = request.POST.get('amount', '').strip()
+        grn_id    = request.POST.get('grn', '').strip()
+        category  = request.POST.get('category', '').strip()
+        date_str  = request.POST.get('date', '').strip()
+        amt_str   = request.POST.get('amount', '').strip()
         vendor_id = request.POST.get('vendor', '').strip()
 
         if not grn_id:   errors.append('Please select a GRN.')
@@ -3877,6 +3880,18 @@ def add_grn_expense(request, grn_pk=None):
         except Exception:
             errors.append('Invalid amount.')
             amount = Decimal('0')
+
+        try:
+            gst_rate = Decimal(request.POST.get('gst_rate', '0') or '0')
+            if gst_rate < 0: gst_rate = Decimal('0')
+        except Exception:
+            gst_rate = Decimal('0')
+
+        try:
+            gst_amount = Decimal(request.POST.get('gst_amount', '0') or '0')
+            if gst_amount < 0: gst_amount = Decimal('0')
+        except Exception:
+            gst_amount = Decimal('0')
 
         grn_obj = None
         if grn_id:
@@ -3903,19 +3918,26 @@ def add_grn_expense(request, grn_pk=None):
             if vendor_id:
                 try: vendor_name = service_vendors.get(pk=vendor_id).name
                 except: pass
+            total_bill = amount + gst_amount
             header = [
-                ('GRN',      f"{grn_obj.grn_number} — {grn_obj.supplier.name}"),
-                ('Date',     date_str),
-                ('Category', dict(GRNExpense.CATEGORY_CHOICES).get(category, category)),
-                ('Amount',   f'₹{amount:,.2f}'),
-                ('Vendor',   vendor_name or '— No vendor'),
+                ('GRN',         f"{grn_obj.grn_number} — {grn_obj.supplier.name}"),
+                ('Date',        date_str),
+                ('Category',    dict(GRNExpense.CATEGORY_CHOICES).get(category, category)),
+                ('Base Amount', f'₹{amount:,.2f}'),
             ]
+            if gst_rate > 0 or gst_amount > 0:
+                header.append((f'GST ({gst_rate}%)', f'₹{gst_amount:,.2f}'))
+            header.append(('Vendor', vendor_name or '— No vendor'))
             if request.POST.get('description'):
                 header.append(('Description', request.POST.get('description')))
+            totals = [('Base Amount', f'₹{amount:,.2f}', False)]
+            if gst_amount > 0:
+                totals.append((f'GST ({gst_rate}%)', f'₹{gst_amount:,.2f}', False))
+            totals.append(('Total Bill', f'₹{total_bill:,.2f}', True))
             return _preview_response(request,
                 title='GRN Expense', icon='🧾',
                 header=header, items=[],
-                item_cols=[], totals=[('Amount', f'₹{amount:,.2f}', True)],
+                item_cols=[], totals=totals,
                 confirm_url=request.path)
 
         with transaction.atomic():
@@ -3928,6 +3950,8 @@ def add_grn_expense(request, grn_pk=None):
                 category=category,
                 description=request.POST.get('description', ''),
                 amount=amount,
+                gst_rate=gst_rate,
+                gst_amount=gst_amount,
                 vendor_id=vendor_id if vendor_id else None,
                 created_by=request.user,
             )
@@ -3979,6 +4003,10 @@ def edit_grn_expense(request, pk):
             ge.category    = request.POST.get('category', ge.category)
             ge.description = request.POST.get('description', '')
             ge.amount      = amount
+            try:    ge.gst_rate   = Decimal(request.POST.get('gst_rate', '0') or '0')
+            except: ge.gst_rate   = Decimal('0')
+            try:    ge.gst_amount = Decimal(request.POST.get('gst_amount', '0') or '0')
+            except: ge.gst_amount = Decimal('0')
             ge.vendor_id   = request.POST.get('vendor') or None
             ge.save()
             _recalc_grn_landed(grn)
@@ -4007,3 +4035,136 @@ def delete_grn_expense(request, pk):
         messages.success(request, 'GRN Expense deleted. Landed rates recalculated.')
         return redirect('grn_detail', pk=grn.pk)
     return redirect('grn_detail', pk=grn.pk)
+
+
+# ── GST Report ────────────────────────────────────────────────────
+@login_req
+def gst_report(request):
+    godown = get_godown(request)
+    from_date = request.GET.get('from', '')
+    to_date   = request.GET.get('to', '')
+
+    # Output GST (from Sales)
+    sales_qs = Sale.objects.filter(godown=godown, sale_type='bill')
+    if from_date: sales_qs = sales_qs.filter(date__gte=from_date)
+    if to_date:   sales_qs = sales_qs.filter(date__lte=to_date)
+
+    output_rows = []
+    total_taxable_out = Decimal('0')
+    total_cgst_out    = Decimal('0')
+    total_sgst_out    = Decimal('0')
+    total_igst_out    = Decimal('0')
+
+    for sale in sales_qs.order_by('date'):
+        if sale.gst_amount > 0:
+            output_rows.append({
+                'date':     sale.date,
+                'ref':      sale.bill_number,
+                'party':    sale.customer.name,
+                'taxable':  sale.taxable_amount,
+                'cgst':     sale.cgst,
+                'sgst':     sale.sgst,
+                'igst':     sale.igst,
+                'total_gst': sale.gst_amount,
+                'is_igst':  sale.is_igst,
+                'gst_rate': sale.gst_rate,
+                'sale_obj': sale,
+            })
+            total_taxable_out += sale.taxable_amount
+            total_cgst_out    += sale.cgst
+            total_sgst_out    += sale.sgst
+            total_igst_out    += sale.igst
+
+    # Input GST (from GRN Expenses)
+    ge_qs = GRNExpense.objects.filter(godown=godown, gst_amount__gt=0)
+    if from_date: ge_qs = ge_qs.filter(date__gte=from_date)
+    if to_date:   ge_qs = ge_qs.filter(date__lte=to_date)
+
+    # Input GST from Material Purchases (domestic suppliers)
+    mat_grn_qs = StockIn.objects.filter(godown=godown, gst_amount__gt=0)
+    if from_date: mat_grn_qs = mat_grn_qs.filter(date__gte=from_date)
+    if to_date:   mat_grn_qs = mat_grn_qs.filter(date__lte=to_date)
+
+    input_material_rows = []
+    total_base_in_mat   = Decimal('0')
+    total_gst_in_mat    = Decimal('0')
+
+    for grn in mat_grn_qs.select_related('supplier').order_by('date'):
+        input_material_rows.append({
+            'date':     grn.date,
+            'ref':      grn.grn_number,
+            'party':    grn.supplier.name,
+            'base':     grn.items_total,
+            'gst_rate': grn.gst_rate,
+            'gst_amt':  grn.gst_amount,
+        })
+        total_base_in_mat += grn.items_total
+        total_gst_in_mat  += grn.gst_amount
+
+    input_expense_rows = []
+    total_base_in_exp  = Decimal('0')
+    total_gst_in_exp   = Decimal('0')
+
+    for ge in ge_qs.select_related('stock_in', 'vendor').order_by('date'):
+        input_expense_rows.append({
+            'date':     ge.date,
+            'ref':      ge.expense_number,
+            'grn':      ge.stock_in.grn_number,
+            'party':    ge.vendor.name if ge.vendor else '—',
+            'category': ge.get_category_display(),
+            'base':     ge.amount,
+            'gst_rate': ge.gst_rate,
+            'gst_amt':  ge.gst_amount,
+        })
+        total_base_in_exp += ge.amount
+        total_gst_in_exp  += ge.gst_amount
+
+    # Input GST from Imports (customs IGST on GRNs)
+    grn_qs = StockIn.objects.filter(godown=godown).filter(
+        db_models.Q(igst_import__gt=0) | db_models.Q(customs_duty__gt=0)
+    )
+    if from_date: grn_qs = grn_qs.filter(date__gte=from_date)
+    if to_date:   grn_qs = grn_qs.filter(date__lte=to_date)
+
+    input_import_rows = []
+    total_customs_duty  = Decimal('0')
+    total_igst_import   = Decimal('0')
+
+    for grn in grn_qs.select_related('supplier').order_by('date'):
+        input_import_rows.append({
+            'date':         grn.date,
+            'ref':          grn.grn_number,
+            'party':        grn.supplier.name,
+            'customs_duty': grn.customs_duty,
+            'igst_import':  grn.igst_import,
+        })
+        total_customs_duty += grn.customs_duty
+        total_igst_import  += grn.igst_import
+
+    # Totals
+    total_output_gst = total_cgst_out + total_sgst_out + total_igst_out
+    total_input_gst  = total_gst_in_mat + total_gst_in_exp + total_igst_import
+    net_payable      = total_output_gst - total_input_gst
+
+    return render(request, 'godown/gst_report.html', ctx(request, {
+        'active':        'gst_report',
+        'from_date':     from_date,
+        'to_date':       to_date,
+        'output_rows':   output_rows,
+        'total_taxable_out': total_taxable_out,
+        'total_cgst_out':    total_cgst_out,
+        'total_sgst_out':    total_sgst_out,
+        'total_igst_out':    total_igst_out,
+        'total_output_gst':  total_output_gst,
+        'input_material_rows': input_material_rows,
+        'total_base_in_mat':   total_base_in_mat,
+        'total_gst_in_mat':    total_gst_in_mat,
+        'input_expense_rows':  input_expense_rows,
+        'total_base_in_exp':   total_base_in_exp,
+        'total_gst_in_exp':    total_gst_in_exp,
+        'input_import_rows':   input_import_rows,
+        'total_customs_duty':  total_customs_duty,
+        'total_igst_import':   total_igst_import,
+        'total_input_gst':     total_input_gst,
+        'net_payable':         net_payable,
+    }))
