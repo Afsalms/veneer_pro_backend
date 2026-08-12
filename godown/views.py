@@ -699,6 +699,7 @@ def add_product(request):
         auto_sqm = (sl * sw * Decimal('0.0929')).quantize(Decimal('0.0001'))
         ov_raw   = request.POST.get('sheet_sqm_override', '').strip()
         override = Decimal(ov_raw).quantize(Decimal('0.0001')) if ov_raw else None
+        hsn_code = request.POST.get('hsn_code', '4408').strip()[:15]
         Product.objects.create(
             godown=godown, species=species,
             sale_name=sale_name,
@@ -708,7 +709,7 @@ def add_product(request):
             buy_rate=request.POST.get('buy_rate',0) or 0,
             sale_rate=request.POST.get('sale_rate',0) or 0,
             min_stock=request.POST.get('min_stock',500) or 500,
-            hsn_code=request.POST.get('hsn_code','4408'),
+            hsn_code=hsn_code or '4408',
             sheet_length=sl, sheet_width=sw,
             sheet_sqm=auto_sqm, sheet_sqm_override=override,
         )
@@ -753,7 +754,8 @@ def edit_product(request, pk):
         p.thickness=request.POST.get('thickness','0.6mm')
         p.cut_type=request.POST.get('cut_type','Flat Cut'); p.finish=request.POST.get('finish','Natural')
         p.buy_rate=request.POST.get('buy_rate',0) or 0; p.sale_rate=request.POST.get('sale_rate',0) or 0
-        p.min_stock=request.POST.get('min_stock',500) or 500; p.hsn_code=request.POST.get('hsn_code','4408')
+        p.min_stock=request.POST.get('min_stock',500) or 500
+        p.hsn_code=(request.POST.get('hsn_code','4408').strip() or '4408')[:15]
         p.sheet_length=sl; p.sheet_width=sw
         p.sheet_sqm = (sl * sw * Decimal('0.0929')).quantize(Decimal('0.0001'))
         p.sheet_sqm_override = Decimal(ov_raw).quantize(Decimal('0.0001')) if ov_raw else None

@@ -241,8 +241,8 @@ class Product(models.Model):
     sale_rate   = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     min_stock   = models.DecimalField(max_digits=10, decimal_places=4, default=500,
                       help_text='Minimum stock level in sq.m')
-    hsn_code    = models.CharField(max_length=8, blank=True, default='4408',
-                      help_text='HSN code for e-invoice (face veneer = 4408)')
+    hsn_code    = models.CharField(max_length=15, blank=True, default='4408',
+                      help_text='HSN code — up to 15 characters including dots (e.g. 4408, 44.08, 4408.10.10)')
     uom         = models.CharField(max_length=5, blank=True, default='SQF',
                       help_text='Unit of measure for GSP/e-invoice (SQF = square feet, internal unit)')
     stock_qty   = models.DecimalField(max_digits=12, decimal_places=4, default=0,
