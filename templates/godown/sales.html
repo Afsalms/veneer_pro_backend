@@ -35,7 +35,16 @@
       <td style="font-weight:600;">₹{{ s.grand_total|floatformat:0 }}</td>
       <td style="{% if s.balance > 0 %}color:#b33a36;font-weight:500;{% endif %}">₹{{ s.balance|floatformat:0 }}</td>
       <td><span class="bv {% if s.status == 'paid' %}bg{% elif s.status == 'partial' %}ba{% else %}br{% endif %}">{{ s.status|title }}</span></td>
-      <td><a class="bs" href="{% url 'invoice' s.pk %}" title="Invoice"><i class="bi bi-printer"></i></a></td>
+      <td>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <a class="bs" href="{% url 'invoice' s.pk %}" title="Invoice"><i class="bi bi-printer"></i></a>
+          <a class="bs" href="{% url 'edit_sale' s.pk %}" title="Edit"><i class="bi bi-pencil"></i></a>
+          <a class="bs" href="{% url 'sale_detail' s.pk %}" title="View"><i class="bi bi-eye"></i></a>
+          <form method="post" action="{% url 'delete_sale' s.pk %}" onsubmit="return confirm('Delete {{ s.bill_number }}? This will reverse stock.');">{% csrf_token %}
+            <button type="submit" class="bs" style="color:#b33a36;border-color:#f5c6cb;" title="Delete"><i class="bi bi-trash3"></i></button>
+          </form>
+        </div>
+      </td>
     </tr>
     {% empty %}
     <tr><td colspan="10" style="text-align:center;color:var(--tm);padding:30px;">No sales yet.</td></tr>

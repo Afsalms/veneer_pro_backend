@@ -38,6 +38,17 @@
       <td style="color:#2d6a27;">{% if g.po and g.po.advance_paid > 0 %}₹{{ g.po.advance_paid_inr|floatformat:0 }}{% else %}—{% endif %}</td>
       <td style="color:#2d6a27;">₹{{ g.amount_paid_inr|floatformat:0 }}</td>
       <td style="{% if g.balance > 0 %}color:#b33a36;font-weight:500;{% else %}color:#2d6a27;{% endif %}">₹{{ g.balance|floatformat:0 }}</td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <a class="bs" href="{% url 'grn_detail' g.pk %}" style="font-size:11px;">View</a>
+          {% if not g.items.filter %}
+          {% endif %}
+          <form method="post" action="{% url 'delete_grn' g.pk %}" style="display:inline;"
+                onsubmit="return confirm('Delete {{ g.grn_number }}? This will reverse stock and cannot be undone.');">{% csrf_token %}
+            <button type="submit" class="bs" style="font-size:11px;color:#b33a36;border-color:#f5c6cb;padding:4px 8px;"><i class="bi bi-trash3"></i></button>
+          </form>
+        </div>
+      </td>
     </tr>{% empty %}
     <tr><td colspan="8" style="text-align:center;color:var(--tm);padding:30px;">No stock entries yet.</td></tr>
     {% endfor %}
@@ -55,6 +66,12 @@
     {% for item in g.items.all %}<div class="mr"><span class="mrk">{{ item.product.display_name }}</span><span class="mrv">{{ item.qty_display }} @ ₹{{ item.rate_per_sqm }}/sq.m</span></div>{% endfor %}
     {% if g.po %}<div class="mr"><span class="mrk">PO Ref</span><span class="mrv">{{ g.po.po_number }}</span></div>{% endif %}
     <div class="mr"><span class="mrk">Total</span><span class="mrv" style="font-weight:600;">₹{{ g.total_amount|floatformat:0 }}</span></div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <a class="bs" href="{% url 'grn_detail' g.pk %}" style="flex:1;text-align:center;">View</a>
+      <form method="post" action="{% url 'delete_grn' g.pk %}" onsubmit="return confirm('Delete {{ g.grn_number }}?');">{% csrf_token %}
+        <button type="submit" class="bs" style="color:#b33a36;border-color:#f5c6cb;"><i class="bi bi-trash3"></i></button>
+      </form>
+    </div>
   </div>{% endfor %}
   </div>
 

@@ -6,6 +6,50 @@ from django.utils import timezone
 
 
 # ─────────────────────────────────────────────────────────────────
+# SOFT DELETE MIXIN
+# Adds is_deleted + deleted_at to any model.
+# .soft_delete() marks the record deleted instead of removing it.
+# ActiveManager (default) excludes deleted records automatically.
+# AllObjectsManager gives access to everything including deleted.
+# ─────────────────────────────────────────────────────────────────
+
+class ActiveManager(models.Manager):
+    """Default manager — excludes soft-deleted records from all queries."""
+    def get_queryset(self):
+        return super().get_queryset().filter(is_deleted=False)
+
+
+class AllObjectsManager(models.Manager):
+    """Access all records including soft-deleted ones."""
+    def get_queryset(self):
+        return super().get_queryset()
+
+
+class SoftDeleteMixin(models.Model):
+    """Mixin that adds soft-delete capability to any model.
+    Use .soft_delete() instead of .delete().
+    Use Model.all_objects.all() to include deleted records."""
+    is_deleted  = models.BooleanField(default=False, db_index=True)
+    deleted_at  = models.DateTimeField(null=True, blank=True)
+
+    objects     = ActiveManager()      # default — excludes deleted
+    all_objects = AllObjectsManager()  # includes deleted (for admin/recovery)
+
+    class Meta:
+        abstract = True
+
+    def soft_delete(self):
+        self.is_deleted = True
+        self.deleted_at = timezone.now()
+        self.save(update_fields=['is_deleted', 'deleted_at'])
+
+    def restore(self):
+        self.is_deleted = False
+        self.deleted_at = None
+        self.save(update_fields=['is_deleted', 'deleted_at'])
+
+
+# ─────────────────────────────────────────────────────────────────
 # GODOWN (Company / Tenant)
 # Each client company is one Godown. All data is scoped to a Godown.
 # ─────────────────────────────────────────────────────────────────
@@ -121,7 +165,7 @@ class UserProfile(models.Model):
 # CORE BUSINESS MODELS — all scoped to a Godown
 # ─────────────────────────────────────────────────────────────────
 
-class Supplier(models.Model):
+class Supplier(SoftDeleteMixin, models.Model):
     TYPE_CHOICES = [
         ('material', 'Material Supplier'),
         ('service',  'Service Vendor (transport, forklift, labour, etc.)'),
@@ -175,7 +219,7 @@ class Supplier(models.Model):
         return total_amt - total_paid
 
 
-class Customer(models.Model):
+class Customer(SoftDeleteMixin, models.Model):
     godown       = models.ForeignKey(Godown, on_delete=models.CASCADE, related_name='customers')
     name         = models.CharField(max_length=200)
     phone        = models.CharField(max_length=20, blank=True)
@@ -222,7 +266,7 @@ class Customer(models.Model):
         return 'overdue' if overdue else 'dues_pending'
 
 
-class Product(models.Model):
+class Product(SoftDeleteMixin, models.Model):
     THICKNESS_CHOICES = [('0.5mm','0.5mm'),('0.6mm','0.6mm'),
                          ('0.8mm','0.8mm'),('1.0mm','1.0mm'),('1.2mm','1.2mm')]
     CUT_CHOICES = [('Flat Cut','Flat Cut'),('Quarter Cut','Quarter Cut'),
@@ -323,7 +367,7 @@ class Product(models.Model):
         self.save(update_fields=['avg_cost'])
 
 
-class PurchaseOrder(models.Model):
+class PurchaseOrder(SoftDeleteMixin, models.Model):
     STATUS_CHOICES = [('pending','Pending'),('partial','Partially Received'),
                       ('received','Fully Received'),('cancelled','Cancelled')]
     PAYMENT_MODE_CHOICES = [('credit','Credit'),('cash','Cash'),
@@ -459,7 +503,7 @@ class PurchaseOrderItem(models.Model):
         return f"{self.qty_sqm:.4f} sq.m"
 
 
-class StockIn(models.Model):
+class StockIn(SoftDeleteMixin, models.Model):
     PAYMENT_MODE_CHOICES = [('credit','Credit'),('cash','Cash'),
                             ('bank','Bank Transfer'),('cheque','Cheque'),('upi','UPI')]
 
@@ -656,7 +700,7 @@ class LandingExpense(models.Model):
         return self.balance <= Decimal('0.01')
 
 
-class GRNExpense(models.Model):
+class GRNExpense(SoftDeleteMixin, models.Model):
     """Standalone GRN Expense entry — created separately from GRN entry,
     linked to a GRN and optionally to a service vendor for payable tracking.
     Each entry gets its own GE-xxx number, recalculates landed rates on the GRN."""
@@ -749,7 +793,7 @@ def get_fifo_grn(product, qty_needed, godown):
 
 
 # ── Stock Damage ──────────────────────────────────────────────────
-class StockDamage(models.Model):
+class StockDamage(SoftDeleteMixin, models.Model):
     DAMAGE_CATEGORY = [
         ('transit',  'Transit Damage'),
         ('quality',  'Quality Reject'),
@@ -784,7 +828,7 @@ class StockDamage(models.Model):
         return (self.qty_sqm * self.cost_rate).quantize(Decimal('0.01'))
 
 
-class Sale(models.Model):
+class Sale(SoftDeleteMixin, models.Model):
     PAYMENT_MODE_CHOICES = [('credit','Credit'),('cash','Cash'),
                             ('bank','Bank Transfer'),('cheque','Cheque'),('upi','UPI')]
     SALE_TYPE_CHOICES    = [('bill','Tax Invoice'),('cash_memo','Cash Memo (No Bill)')]
@@ -935,7 +979,7 @@ class SaleItem(models.Model):
         return (self.gross_profit / self.amount * 100).quantize(Decimal('0.1'))
 
 
-class Expense(models.Model):
+class Expense(SoftDeleteMixin, models.Model):
     CATEGORY_CHOICES = [('rent','Godown Rent'),('forklift','Forklift Rent'),
                         ('labour','Labour / Loading'),('transport','Transport / Freight'),
                         ('electricity','Electricity'),('misc','Miscellaneous')]
@@ -993,7 +1037,7 @@ class StockAlert(models.Model):
         return self.is_active and self.product.stock_qty <= self.reorder_point
 
 
-class Estimation(models.Model):
+class Estimation(SoftDeleteMixin, models.Model):
     """Customer quotation / estimate — before a formal sale."""
     STATUS_CHOICES = [('draft','Draft'),('sent','Sent'),('accepted','Accepted'),('expired','Expired')]
     godown       = models.ForeignKey(Godown, on_delete=models.CASCADE, related_name='estimations')
@@ -1161,7 +1205,7 @@ class BankAccount(models.Model):
         return self.opening_balance + credits - debits
 
 
-class BankTransaction(models.Model):
+class BankTransaction(SoftDeleteMixin, models.Model):
     TXN_TYPE_CHOICES = [('credit', 'Credit (Money In)'), ('debit', 'Debit (Money Out)')]
     TXN_CATEGORY_CHOICES = [
         ('sale_receipt',    'Sale Receipt'),

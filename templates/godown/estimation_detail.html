@@ -13,6 +13,10 @@
     </button>
     {% endif %}
     <button class="bs" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
+    <form method="post" action="{% url 'delete_estimation' est.pk %}" style="display:inline;"
+          onsubmit="return confirm('Delete {{ est.est_number }}? This cannot be undone.');">{% csrf_token %}
+      <button type="submit" class="bs" style="color:#b33a36;border-color:#f5c6cb;"><i class="bi bi-trash3"></i> Delete</button>
+    </form>
     {% if est.status == 'draft' or est.status == 'sent' %}
     <a class="bw" href="{% url 'convert_to_sale' est.pk %}" onclick="return confirm('Convert this estimation to a sale bill?')"><i class="bi bi-arrow-right-circle"></i> Convert to Sale</a>
     {% endif %}

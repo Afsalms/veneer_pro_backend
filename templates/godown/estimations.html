@@ -25,7 +25,15 @@
       <td style="color:var(--tm);">{% if e.include_gst %}₹{{ e.gst_amount|floatformat:0 }}{% else %}—{% endif %}</td>
       <td style="font-weight:600;">₹{{ e.total|floatformat:0 }}</td>
       <td><span class="bv {% if e.status == 'accepted' %}bg{% elif e.status == 'expired' %}br{% elif e.status == 'sent' %}bb{% else %}bz{% endif %}">{{ e.get_status_display }}</span></td>
-      <td><a class="bs" href="{% url 'estimation_detail' e.pk %}">View</a></td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <a class="bs" href="{% url 'estimation_detail' e.pk %}">View</a>
+          <form method="post" action="{% url 'delete_estimation' e.pk %}" style="display:inline;"
+                onsubmit="return confirm('Delete {{ e.est_number }}?');">{% csrf_token %}
+            <button type="submit" class="bs" style="font-size:11px;color:#b33a36;border-color:#f5c6cb;padding:4px 8px;"><i class="bi bi-trash3"></i></button>
+          </form>
+        </div>
+      </td>
     </tr>
     {% empty %}<tr><td colspan="10" style="text-align:center;color:var(--tm);padding:30px;">No estimations yet. <a href="{% url 'add_estimation' %}">Create one</a></td></tr>{% endfor %}
     </tbody>
@@ -40,7 +48,12 @@
     <div class="mr"><span class="mrk">Subtotal</span><span class="mrv">₹{{ e.subtotal|floatformat:0 }}</span></div>
     {% if e.include_gst %}<div class="mr"><span class="mrk">GST {{ e.gst_rate }}%</span><span class="mrv">₹{{ e.gst_amount|floatformat:0 }}</span></div>{% endif %}
     <div class="mr"><span class="mrk">Total</span><span class="mrv" style="font-weight:700;color:var(--wood-600);">₹{{ e.total|floatformat:0 }}</span></div>
-    <div style="margin-top:10px;"><a class="bw" href="{% url 'estimation_detail' e.pk %}" style="width:100%;justify-content:center;">View & Share</a></div>
+    <div style="margin-top:10px;display:flex;gap:8px;">
+      <a class="bw" href="{% url 'estimation_detail' e.pk %}" style="flex:1;justify-content:center;">View & Share</a>
+      <form method="post" action="{% url 'delete_estimation' e.pk %}" onsubmit="return confirm('Delete {{ e.est_number }}?');">{% csrf_token %}
+        <button type="submit" class="bs" style="color:#b33a36;border-color:#f5c6cb;"><i class="bi bi-trash3"></i></button>
+      </form>
+    </div>
   </div>{% endfor %}</div>
 </div>
   {% if has_more %}

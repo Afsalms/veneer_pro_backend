@@ -663,6 +663,8 @@ def products(request):
         SaleItem.objects.filter(sale__godown=godown).values_list('product_id', flat=True)
     ) | set(
         StockInItem.objects.filter(stock_in__godown=godown).values_list('product_id', flat=True)
+    ) | set(
+        PurchaseOrderItem.objects.filter(po__godown=godown).values_list('product_id', flat=True)
     )
     return render(request, 'godown/products.html', ctx(request, {
         'active':'products',
@@ -2949,7 +2951,7 @@ def delete_customer(request, pk):
     if Sale.objects.filter(customer=c, godown=godown).exists():
         messages.error(request, f'Cannot delete "{c.name}" — they have sales records.')
     elif request.method == 'POST':
-        name = c.name; c.delete()
+        name = c.name; c.soft_delete()
         messages.success(request, f'Customer "{name}" deleted.')
     return redirect('customers')
 
@@ -2966,7 +2968,7 @@ def delete_supplier(request, pk):
         if has_service_records:  reason.append('service charge records')
         messages.error(request, f'Cannot delete "{s.name}" — they have {" and ".join(reason)}.')
     elif request.method == 'POST':
-        name = s.name; s.delete()
+        name = s.name; s.soft_delete()
         messages.success(request, f'Supplier "{name}" deleted.')
     return redirect('suppliers')
 
@@ -2974,10 +2976,17 @@ def delete_supplier(request, pk):
 def delete_product(request, pk):
     godown = get_godown(request)
     p = get_object_or_404(Product, pk=pk, godown=godown)
-    if SaleItem.objects.filter(product=p, sale__godown=godown).exists() or StockInItem.objects.filter(product=p, stock_in__godown=godown).exists():
-        messages.error(request, f'Cannot delete "{p.display_name}" — it has stock/sale records.')
+    in_sale  = SaleItem.objects.filter(product=p, sale__godown=godown).exists()
+    in_grn   = StockInItem.objects.filter(product=p, stock_in__godown=godown).exists()
+    in_po    = PurchaseOrderItem.objects.filter(product=p, po__godown=godown).exists()
+    if in_sale or in_grn or in_po:
+        reasons = []
+        if in_po:   reasons.append('purchase orders')
+        if in_grn:  reasons.append('stock receipts (GRN)')
+        if in_sale: reasons.append('sales')
+        messages.error(request, f'Cannot delete "{p.display_name}" — it is used in {", ".join(reasons)}.')
     elif request.method == 'POST':
-        name = p.display_name; p.delete()
+        name = p.display_name; p.soft_delete()
         messages.success(request, f'Product "{name}" deleted.')
     return redirect('products')
 
@@ -3287,13 +3296,111 @@ def delete_damage(request, pk):
     godown = get_godown(request)
     damage = get_object_or_404(StockDamage, pk=pk, godown=godown)
     if request.method == 'POST':
-        # Restore stock qty
-        product = damage.product
-        product.stock_qty += damage.qty_sqm
-        product.save(update_fields=['stock_qty'])
-        damage.delete()
+        with transaction.atomic():
+            # Restore stock qty back — damage is being soft-deleted
+            Product.objects.filter(pk=damage.product_id).update(
+                stock_qty=DbF('stock_qty') + damage.qty_sqm
+            )
+            damage.soft_delete()
         messages.success(request, 'Damage record deleted and stock restored.')
     return redirect('damage_list')
+
+
+@login_req
+def delete_sale(request, pk):
+    godown = get_godown(request)
+    sale   = get_object_or_404(Sale, pk=pk, godown=godown)
+    if BankTransaction.objects.filter(sale=sale).exists():
+        messages.error(request, f'Cannot delete {sale.bill_number} — it has bank transactions linked. Delete those first.')
+        return redirect('sale_detail', pk=pk)
+    if request.method == 'POST':
+        with transaction.atomic():
+            for item in sale.items.all():
+                Product.objects.filter(pk=item.product_id).update(
+                    stock_qty=DbF('stock_qty') + item.qty_sqm
+                )
+            sale.soft_delete()
+        messages.success(request, f'Sale {sale.bill_number} deleted and stock restored.')
+        return redirect('sales_list')
+    return redirect('sale_detail', pk=pk)
+
+
+@login_req
+def delete_po(request, pk):
+    godown = get_godown(request)
+    po     = get_object_or_404(PurchaseOrder, pk=pk, godown=godown)
+    if StockIn.objects.filter(po=po, godown=godown).exists():
+        messages.error(request, f'Cannot delete {po.po_number} — stock has already been received against it.')
+        return redirect('po_detail', pk=pk)
+    if request.method == 'POST':
+        po.soft_delete()
+        messages.success(request, f'Purchase Order {po.po_number} deleted.')
+        return redirect('po_list')
+    return redirect('po_detail', pk=pk)
+
+
+@login_req
+def delete_grn(request, pk):
+    godown = get_godown(request)
+    grn    = get_object_or_404(StockIn, pk=pk, godown=godown)
+    if SaleItem.objects.filter(grn_source=grn).exists():
+        messages.error(request, f'Cannot delete {grn.grn_number} — sales have been recorded from this GRN.')
+        return redirect('grn_detail', pk=pk)
+    if GRNExpense.objects.filter(stock_in=grn, amount_paid__gt=0).exists():
+        messages.error(request, f'Cannot delete {grn.grn_number} — GRN expenses have payments recorded.')
+        return redirect('grn_detail', pk=pk)
+    if BankTransaction.objects.filter(grn=grn).exists():
+        messages.error(request, f'Cannot delete {grn.grn_number} — it has bank transactions linked.')
+        return redirect('grn_detail', pk=pk)
+    if request.method == 'POST':
+        with transaction.atomic():
+            for item in grn.items.all():
+                Product.objects.filter(pk=item.product_id).update(
+                    stock_qty=DbF('stock_qty') - item.qty_sqm
+                )
+            grn.soft_delete()
+        messages.success(request, f'GRN {grn.grn_number} deleted and stock reversed.')
+        return redirect('stock_in_list')
+    return redirect('grn_detail', pk=pk)
+
+
+@login_req
+def delete_expense(request, pk):
+    godown  = get_godown(request)
+    expense = get_object_or_404(Expense, pk=pk, godown=godown)
+    if BankTransaction.objects.filter(expense=expense).exists():
+        messages.error(request, 'Cannot delete this expense — it has a bank transaction linked.')
+        return redirect('expenses')
+    if request.method == 'POST':
+        expense.soft_delete()
+        messages.success(request, 'Expense deleted.')
+    return redirect('expenses')
+
+
+@login_req
+def delete_estimation(request, pk):
+    godown     = get_godown(request)
+    estimation = get_object_or_404(Estimation, pk=pk, godown=godown)
+    if request.method == 'POST':
+        est_num = estimation.est_number
+        estimation.soft_delete()
+        messages.success(request, f'Estimation {est_num} deleted.')
+    return redirect('estimations')
+
+
+@login_req
+def delete_bank_transaction(request, pk):
+    godown = get_godown(request)
+    txn    = get_object_or_404(BankTransaction, pk=pk, account__godown=godown)
+    if txn.sale_id or txn.grn_id or txn.expense_id:
+        messages.error(request, 'Cannot delete auto-created bank entries — delete the original sale/GRN/expense instead.')
+        return redirect('bank_statement', pk=txn.account_id)
+    if request.method == 'POST':
+        account_pk = txn.account_id
+        txn.soft_delete()
+        messages.success(request, 'Bank transaction deleted.')
+        return redirect('bank_statement', pk=account_pk)
+    return redirect('bank_statement', pk=txn.account_id)
 
 
 # ── e-Invoice JSON (GSP format) ───────────────────────────────────
@@ -4032,7 +4139,7 @@ def delete_grn_expense(request, pk):
 
     if request.method == 'POST':
         with transaction.atomic():
-            ge.delete()
+            ge.soft_delete()
             _recalc_grn_landed(grn)
         messages.success(request, 'GRN Expense deleted. Landed rates recalculated.')
         return redirect('grn_detail', pk=grn.pk)

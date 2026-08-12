@@ -26,7 +26,16 @@
       <td style="font-weight:500;">₹{{ po.total_value|floatformat:0 }}</td>
       <td style="color:#2d6a27;">₹{{ po.advance_paid|floatformat:0 }}</td>
       <td><span class="bv {% if po.status == 'received' %}bg{% elif po.status == 'cancelled' %}br{% elif po.status == 'partial' %}ba{% else %}bb{% endif %}">{{ po.get_status_display }}</span></td>
-      <td><a class="bs" href="{% url 'po_detail' po.pk %}">View</a></td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <a class="bs" href="{% url 'po_detail' po.pk %}">View</a>
+          {% if not po.grns.exists %}
+          <form method="post" action="{% url 'delete_po' po.pk %}" style="display:inline;" onsubmit="return confirm('Delete {{ po.po_number }}?');">{% csrf_token %}
+            <button type="submit" class="bs" style="color:#b33a36;border-color:#f5c6cb;padding:4px 8px;"><i class="bi bi-trash3"></i></button>
+          </form>
+          {% endif %}
+        </div>
+      </td>
     </tr>{% empty %}
     <tr><td colspan="9" style="text-align:center;color:var(--tm);padding:30px;">No purchase orders yet.</td></tr>
     {% endfor %}
