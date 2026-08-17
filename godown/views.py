@@ -683,6 +683,12 @@ def add_product(request):
             errors.append('Purchase Name (Species) is required.')
         if not sale_name:
             errors.append('Selling Name is required.')
+        try:
+            sale_rate_val = Decimal(request.POST.get('sale_rate', '0') or '0')
+            if sale_rate_val < 0:
+                errors.append('Sale rate cannot be negative.')
+        except Exception:
+            errors.append('Sale rate must be a valid number.')
         if errors:
             for e in errors: messages.error(request, e)
             return render(request, 'godown/add_product.html', ctx(request, {
@@ -740,6 +746,12 @@ def edit_product(request, pk):
             errors.append('Purchase Name (Species) is required.')
         if not sale_name:
             errors.append('Selling Name is required.')
+        try:
+            sale_rate_val = Decimal(request.POST.get('sale_rate', '0') or '0')
+            if sale_rate_val < 0:
+                errors.append('Sale rate cannot be negative.')
+        except Exception:
+            errors.append('Sale rate must be a valid number.')
         if errors:
             for e in errors: messages.error(request, e)
             return render(request, 'godown/add_product.html', ctx(request, {

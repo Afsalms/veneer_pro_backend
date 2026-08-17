@@ -44,7 +44,7 @@
           <option value="{{ val }}" {% if product.finish == val or not product and val == default_finish %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select></div></div>
-  <div class="frow"><div class="fhalf"><label class="fl">Buy Rate (₹/sq.m)</label><input class="fc" name="buy_rate" type="number" step="0.01" value="{{ product.buy_rate|default:'0' }}" placeholder="0"></div><div class="fhalf"><label class="fl">Sale Rate (₹/sq.m)</label><input class="fc" name="sale_rate" type="number" step="0.01" value="{{ product.sale_rate|default:'0' }}" placeholder="0"></div></div>
+  <div class="frow"><div class="fhalf"><label class="fl">Buy Rate (₹/sq.m)</label><input class="fc" name="buy_rate" type="number" step="0.01" min="0" value="{{ product.buy_rate|default:'0' }}" placeholder="0"></div><div class="fhalf"><label class="fl">Sale Rate (₹/sq.m) <span style="font-weight:400;color:var(--tm);font-size:11px;">optional — can set later</span></label><input class="fc" name="sale_rate" type="number" step="0.01" min="0" value="{{ product.sale_rate|default:'0' }}" placeholder="0"></div></div>
   <div class="frow"><div class="fhalf"><label class="fl">Min Stock (sq.m)</label><input class="fc" name="min_stock" type="number" value="{{ product.min_stock|default:'500' }}" placeholder="500"></div><div class="fhalf"><label class="fl">HSN Code <span style="font-weight:400;color:var(--tm);font-size:11px;">up to 15 chars, dots allowed (e.g. 4408 or 44.08.10)</span></label><input class="fc" name="hsn_code" value="{{ product.hsn_code|default:'' }}" placeholder="4408" maxlength="15" pattern="[0-9.\-]{1,15}" title="HSN code — digits and dots only, max 15 characters"></div></div>
 
   <div style="background:var(--body-bg);border-radius:8px;padding:12px 14px;">
@@ -170,9 +170,9 @@ async function submitProduct() {
   }
 
   const saleRate = parseFloat(document.querySelector('[name="sale_rate"]').value);
-  if (isNaN(saleRate) || saleRate <= 0) {
-    errors.push('Sale rate must be greater than 0');
-    setFieldError('sale_rate', 'Enter a valid sale rate');
+  if (!isNaN(saleRate) && saleRate < 0) {
+    errors.push('Sale rate cannot be negative');
+    setFieldError('sale_rate', 'Cannot be negative');
   }
 
   const minStock = parseFloat(document.querySelector('[name="min_stock"]').value);

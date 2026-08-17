@@ -282,7 +282,8 @@ class Product(SoftDeleteMixin, models.Model):
     cut_type    = models.CharField(max_length=20, choices=CUT_CHOICES, default='Flat Cut')
     finish      = models.CharField(max_length=20, choices=FINISH_CHOICES, default='Natural')
     buy_rate    = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    sale_rate   = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    sale_rate   = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+                      help_text='Selling rate per sq.m — optional at creation, set before first sale')
     min_stock   = models.DecimalField(max_digits=10, decimal_places=4, default=500,
                       help_text='Minimum stock level in sq.m')
     hsn_code    = models.CharField(max_length=15, blank=True, default='4408',
