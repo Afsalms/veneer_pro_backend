@@ -45,7 +45,7 @@
         {% endfor %}
       </select></div></div>
   <div class="frow"><div class="fhalf"><label class="fl">Buy Rate (₹/sq.m)</label><input class="fc" name="buy_rate" type="number" step="0.01" min="0" value="{{ product.buy_rate|default:'0' }}" placeholder="0"></div><div class="fhalf"><label class="fl">Sale Rate (₹/sq.m) <span style="font-weight:400;color:var(--tm);font-size:11px;">optional — can set later</span></label><input class="fc" name="sale_rate" type="number" step="0.01" min="0" value="{{ product.sale_rate|default:'0' }}" placeholder="0"></div></div>
-  <div class="frow"><div class="fhalf"><label class="fl">Min Stock (sq.m)</label><input class="fc" name="min_stock" type="number" value="{{ product.min_stock|default:'500' }}" placeholder="500"></div><div class="fhalf"><label class="fl">HSN Code <span style="font-weight:400;color:var(--tm);font-size:11px;">up to 15 chars, dots allowed (e.g. 4408 or 44.08.10)</span></label><input class="fc" name="hsn_code" value="{{ product.hsn_code|default:'' }}" placeholder="4408" maxlength="15" pattern="[0-9.\-]{1,15}" title="HSN code — digits and dots only, max 15 characters"></div></div>
+  <div class="frow"><div class="fhalf"><label class="fl">Min Stock (sq.m) <span style="font-weight:400;color:var(--tm);font-size:11px;">optional — reorder alert threshold</span></label><input class="fc" name="min_stock" type="number" step="0.01" min="0" value="{{ product.min_stock|default:'0' }}" placeholder="0"></div><div class="fhalf"><label class="fl">HSN Code <span style="font-weight:400;color:var(--tm);font-size:11px;">up to 15 chars, dots allowed (e.g. 4408 or 44.08.10)</span></label><input class="fc" name="hsn_code" value="{{ product.hsn_code|default:'' }}" placeholder="4408" maxlength="15" pattern="[0-9.\-]{1,15}" title="HSN code — digits and dots only, max 15 characters"></div></div>
 
   <div style="background:var(--body-bg);border-radius:8px;padding:12px 14px;">
     <div style="font-size:12px;font-weight:600;color:var(--ts);margin-bottom:10px;">
@@ -176,9 +176,9 @@ async function submitProduct() {
   }
 
   const minStock = parseFloat(document.querySelector('[name="min_stock"]').value);
-  if (isNaN(minStock) || minStock < 0) {
-    errors.push('Min stock must be 0 or more');
-    setFieldError('min_stock', 'Enter a valid minimum stock');
+  if (!isNaN(minStock) && minStock < 0) {
+    errors.push('Minimum stock cannot be negative');
+    setFieldError('min_stock', 'Cannot be negative');
   }
 
   const sheetLen = parseFloat(document.querySelector('[name="sheet_length"]').value);

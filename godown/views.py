@@ -689,6 +689,12 @@ def add_product(request):
                 errors.append('Sale rate cannot be negative.')
         except Exception:
             errors.append('Sale rate must be a valid number.')
+        try:
+            min_stock_val = Decimal(request.POST.get('min_stock', '0') or '0')
+            if min_stock_val < 0:
+                errors.append('Minimum stock cannot be negative.')
+        except Exception:
+            errors.append('Minimum stock must be a valid number.')
         if errors:
             for e in errors: messages.error(request, e)
             return render(request, 'godown/add_product.html', ctx(request, {
@@ -716,7 +722,7 @@ def add_product(request):
             finish=request.POST.get('finish','Natural'),
             buy_rate=request.POST.get('buy_rate',0) or 0,
             sale_rate=request.POST.get('sale_rate',0) or 0,
-            min_stock=request.POST.get('min_stock',500) or 500,
+            min_stock=request.POST.get('min_stock',0) or 0,
             hsn_code=hsn_code or '4408',
             sheet_length=sl, sheet_width=sw,
             sheet_sqm=auto_sqm, sheet_sqm_override=override,
@@ -752,6 +758,12 @@ def edit_product(request, pk):
                 errors.append('Sale rate cannot be negative.')
         except Exception:
             errors.append('Sale rate must be a valid number.')
+        try:
+            min_stock_val = Decimal(request.POST.get('min_stock', '0') or '0')
+            if min_stock_val < 0:
+                errors.append('Minimum stock cannot be negative.')
+        except Exception:
+            errors.append('Minimum stock must be a valid number.')
         if errors:
             for e in errors: messages.error(request, e)
             return render(request, 'godown/add_product.html', ctx(request, {
@@ -768,7 +780,7 @@ def edit_product(request, pk):
         p.thickness=request.POST.get('thickness','0.6mm')
         p.cut_type=request.POST.get('cut_type','Flat Cut'); p.finish=request.POST.get('finish','Natural')
         p.buy_rate=request.POST.get('buy_rate',0) or 0; p.sale_rate=request.POST.get('sale_rate',0) or 0
-        p.min_stock=request.POST.get('min_stock',500) or 500
+        p.min_stock=request.POST.get('min_stock',0) or 0
         p.hsn_code=(request.POST.get('hsn_code','4408').strip() or '4408')[:15]
         p.sheet_length=sl; p.sheet_width=sw
         p.sheet_sqm = (sl * sw * Decimal('0.0929')).quantize(Decimal('0.0001'))
