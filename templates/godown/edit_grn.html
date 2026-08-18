@@ -167,11 +167,11 @@
   <div class="frow">
     <div class="fhalf">
       <label class="fl">Basic Customs Duty (BCD) ₹</label>
-      <input class="fc" name="customs_duty" type="number" step="0.01" min="0" value="{{ grn.customs_duty|floatformat:2 }}" placeholder="0.00">
+      <input class="fc" name="customs_duty" type="number" step="0.01" min="0" value="{{ grn.customs_duty|floatformat:2 }}" placeholder="0.00" oninput="calcEditGRNInvoiceTotal()">
     </div>
     <div class="fhalf">
       <label class="fl">IGST on Import ₹</label>
-      <input class="fc" name="igst_import" type="number" step="0.01" min="0" value="{{ grn.igst_import|floatformat:2 }}" placeholder="0.00">
+      <input class="fc" name="igst_import" type="number" step="0.01" min="0" value="{{ grn.igst_import|floatformat:2 }}" placeholder="0.00" oninput="calcEditGRNInvoiceTotal()">
     </div>
   </div>
 </div>

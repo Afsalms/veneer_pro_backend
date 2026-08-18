@@ -13,7 +13,7 @@
              style="font-family:monospace;font-weight:600;" title="Auto-generated. Edit if needed.">
     </div>
     <div class="fhalf"><label class="fl">PO Date *</label>
-      <input class="fc" name="date" type="date" required value="{% now 'Y-m-d' %}">
+      <input class="fc" name="date" id="po-date" type="date" required value="{% now 'Y-m-d' %}" onchange="onPODateChange(this)">
     </div>
   </div>
   <div class="frow">
@@ -21,7 +21,11 @@
       <select class="fc fsel" name="supplier" id="po-supplier" required data-rule-required="true" data-msg-required="Please select a supplier">
         <option value="">Select supplier</option>{% for s in suppliers %}<option value="{{ s.pk }}">{{ s.name }}</option>{% endfor %}
       </select></div>
-    <div class="fhalf"><label class="fl">Expected Arrival Date</label><input class="fc" name="expected_arrival" type="date"></div>
+    <div class="fhalf">
+      <label class="fl">Expected Arrival Date <span style="font-weight:400;color:var(--tm);font-size:11px;">must be on or after PO date</span></label>
+      <input class="fc" name="expected_arrival" id="po-arrival" type="date" value="{% now 'Y-m-d' %}">
+      <div id="arrival-error" style="font-size:11px;color:#b33a36;margin-top:3px;display:none;">Must be on or after the PO date.</div>
+    </div>
   </div>
   <div class="frow">
     <div class="fhalf"><label class="fl">Notes</label><input class="fc" name="notes" placeholder="Optional"></div>
@@ -198,6 +202,49 @@ function calcAdvanceINR() {
   }
 }
 document.getElementById('po-exchange-rate')?.addEventListener('input', calcAdvanceINR);
+
+function onPODateChange(dateInput) {
+  const arrival = document.getElementById('po-arrival');
+  if (!arrival) return;
+  // Set min on arrival to the PO date so browser date picker prevents earlier dates
+  arrival.min = dateInput.value;
+  // If arrival is already set and is earlier than new PO date, reset it
+  if (arrival.value && arrival.value < dateInput.value) {
+    arrival.value = dateInput.value;
+  }
+  validateArrivalDate();
+}
+
+function validateArrivalDate() {
+  const poDate      = document.getElementById('po-date')?.value;
+  const arrivalDate = document.getElementById('po-arrival')?.value;
+  const errEl       = document.getElementById('arrival-error');
+  const arrivalEl   = document.getElementById('po-arrival');
+  if (arrivalDate && poDate && arrivalDate < poDate) {
+    if (errEl) errEl.style.display = '';
+    if (arrivalEl) arrivalEl.style.borderColor = '#b33a36';
+    return false;
+  }
+  if (errEl) errEl.style.display = 'none';
+  if (arrivalEl) arrivalEl.style.borderColor = '';
+  return true;
+}
+
+// Hook arrival date change to validation
+document.getElementById('po-arrival')?.addEventListener('change', validateArrivalDate);
+
+// Set initial min on arrival from PO date
+document.addEventListener('DOMContentLoaded', () => {
+  const poDate = document.getElementById('po-date')?.value;
+  const arrival = document.getElementById('po-arrival');
+  if (poDate && arrival) arrival.min = poDate;
+});
+
+// Recalculate all line amounts when user comes back from preview (bfcache restore)
+window.addEventListener('pageshow', () => {
+  document.querySelectorAll('#po-items .line-item').forEach(li => calcLineAmount(li));
+});
+
 // jQuery Validation
 $(function(){
   $('#po-form').validate({
@@ -225,6 +272,7 @@ $(function(){
         if (pid && qty > 0 && rate > 0) valid = true;
       });
       if (!valid) { vp.alert('Please add at least one item with product, quantity and rate.','Missing Items','warning'); return false; }
+      if (!validateArrivalDate()) { vp.alert('Expected Arrival Date must be on or after the PO date.','Invalid Date','warning'); return false; }
       form.submit();
     }
   });

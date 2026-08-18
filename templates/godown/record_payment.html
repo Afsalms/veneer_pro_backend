@@ -110,7 +110,7 @@
       </select>
       {% if not bank_accounts %}
       <div style="font-size:11px;color:var(--tm);margin-top:4px;">
-        <a href="{% url 'add_bank_account' %}" style="color:var(--wood-600);">+ Add a bank account</a> to link payments to your bank statement.
+        <a href="{% url 'add_bank_account' %}?next={{ request.path }}" style="color:var(--wood-600);">+ Add a bank account</a> to link payments to your bank statement.
       </div>
       {% endif %}
     </div>

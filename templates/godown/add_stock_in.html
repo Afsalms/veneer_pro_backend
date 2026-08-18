@@ -132,11 +132,11 @@
   <div class="frow">
     <div class="fhalf">
       <label class="fl">Basic Customs Duty (BCD) ₹</label>
-      <input class="fc" name="customs_duty" type="number" step="0.01" min="0" placeholder="0.00 — leave blank if not applicable">
+      <input class="fc" name="customs_duty" type="number" step="0.01" min="0" placeholder="0.00 — leave blank if not applicable" oninput="calcGRNInvoiceTotal()">
     </div>
     <div class="fhalf">
       <label class="fl">IGST on Import ₹</label>
-      <input class="fc" name="igst_import" type="number" step="0.01" min="0" placeholder="0.00 — IGST paid at customs">
+      <input class="fc" name="igst_import" type="number" step="0.01" min="0" placeholder="0.00 — IGST paid at customs" oninput="calcGRNInvoiceTotal()">
     </div>
   </div>
 </div>
@@ -348,6 +348,12 @@ function calcGrandTotal() {
 }
 
 window.updateGrandTotal = calcGrandTotal;
+
+// Recalculate all line amounts when user comes back from preview (bfcache restore)
+window.addEventListener('pageshow', () => {
+  document.querySelectorAll('#si-items .line-item').forEach(li => calcLineAmount(li));
+  calcGrandTotal();
+});
 
 function calcGRNGST() {
   const rate   = parseFloat(document.getElementById('grn-gst-rate')?.value || 0) || 0;

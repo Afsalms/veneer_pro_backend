@@ -34,7 +34,7 @@
     </div>
     <div class="fhalf">
       <label class="fl">Date *</label>
-      <input class="fc" name="date" type="date" required value="{{ po.date|date:'Y-m-d' }}">
+      <input class="fc" name="date" id="edit-po-date" type="date" required value="{{ po.date|date:'Y-m-d' }}" onchange="onEditPODateChange(this)">
     </div>
   </div>
   <div class="frow">
@@ -47,8 +47,12 @@
       </select>
     </div>
     <div class="fhalf">
-      <label class="fl">Expected Arrival</label>
-      <input class="fc" name="expected_arrival" type="date" value="{{ po.expected_arrival|date:'Y-m-d'|default:'' }}">
+      <label class="fl">Expected Arrival <span style="font-weight:400;color:var(--tm);font-size:11px;">must be on or after PO date</span></label>
+      <input class="fc" name="expected_arrival" id="edit-po-arrival" type="date"
+             value="{{ po.expected_arrival|date:'Y-m-d'|default:'' }}"
+             min="{{ po.date|date:'Y-m-d' }}"
+             onchange="validateEditArrival()">
+      <div id="edit-arrival-error" style="font-size:11px;color:#b33a36;margin-top:3px;display:none;">Must be on or after the PO date.</div>
     </div>
   </div>
   <div class="frow">
@@ -355,5 +359,30 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('#po-items .line-item').forEach(li => calcPOLine(li));
   refreshDelBtns();
 });
+
+function onEditPODateChange(dateInput) {
+  const arrival = document.getElementById('edit-po-arrival');
+  if (!arrival) return;
+  arrival.min = dateInput.value;
+  if (arrival.value && arrival.value < dateInput.value) {
+    arrival.value = dateInput.value;
+  }
+  validateEditArrival();
+}
+
+function validateEditArrival() {
+  const poDate      = document.getElementById('edit-po-date')?.value;
+  const arrivalDate = document.getElementById('edit-po-arrival')?.value;
+  const errEl       = document.getElementById('edit-arrival-error');
+  const arrivalEl   = document.getElementById('edit-po-arrival');
+  if (arrivalDate && poDate && arrivalDate < poDate) {
+    if (errEl) errEl.style.display = '';
+    if (arrivalEl) arrivalEl.style.borderColor = '#b33a36';
+    return false;
+  }
+  if (errEl) errEl.style.display = 'none';
+  if (arrivalEl) arrivalEl.style.borderColor = '';
+  return true;
+}
 </script>
 {% endblock %}

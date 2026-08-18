@@ -613,9 +613,12 @@ class StockIn(SoftDeleteMixin, models.Model):
 
     @property
     def balance(self):
-        """Deprecated alias — kept for backward compatibility with old code/templates.
-        Now points to material_balance only (landing expenses excluded)."""
-        return self.material_balance
+        """Total outstanding on this GRN:
+        = total_amount (material + GRN expenses + import duties) - payments - advance.
+        Import duties and GRN expenses are included since they form part of
+        the total cost that needs to be settled."""
+        advance_inr = self.po.advance_paid_inr if self.po else Decimal('0')
+        return self.total_amount - self.amount_paid_inr - advance_inr
 
 
 class StockInItem(models.Model):

@@ -66,7 +66,7 @@
     </div>
     <div class="fhalf">
       <label class="fl">Due Date</label>
-      <input class="fc" name="due_date" type="date">
+      <input class="fc" name="due_date" type="date" value="{% now 'Y-m-d' %}">
     </div>
   </div>
 
@@ -256,11 +256,15 @@ const GODOWN_STATE     = "{{ godown_obj.state_code }}";
 document.addEventListener('DOMContentLoaded', () => {
   const sel = document.getElementById('gst-rate-sel');
   if (sel) {
-    // Find closest matching option to godown default
     const opts = Array.from(sel.options).map(o => parseFloat(o.value));
     const closest = opts.reduce((a, b) => Math.abs(b - GST_RATE_DEFAULT) < Math.abs(a - GST_RATE_DEFAULT) ? b : a);
     sel.value = closest;
   }
+});
+
+// Recalculate all line amounts when user comes back from preview (bfcache restore)
+window.addEventListener('pageshow', () => {
+  document.querySelectorAll('#sale-items .line-item').forEach(li => calcSaleLine(li));
 });
 
 function getGSTRate() {

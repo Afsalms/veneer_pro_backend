@@ -848,6 +848,10 @@ def add_po(request):
             errors.append('Please select a supplier.')
         if not request.POST.get('date'):
             errors.append('Please enter a date.')
+        _po_date      = request.POST.get('date', '')
+        _arrival_date = request.POST.get('expected_arrival', '')
+        if _po_date and _arrival_date and _arrival_date < _po_date:
+            errors.append('Expected Arrival Date cannot be earlier than the PO Date.')
         line_items = []
         for i, pid in enumerate(pids):
             if not pid: continue
@@ -864,6 +868,10 @@ def add_po(request):
             line_items.append((product, qty, rate))
         if not line_items and not errors:
             errors.append('Add at least one item with product, quantity and rate.')
+        # Duplicate PO number check
+        custom_po_check = request.POST.get('po_number', '').strip()
+        if custom_po_check and PurchaseOrder.all_objects.filter(godown=godown, po_number=custom_po_check).exists():
+            errors.append(f'PO number "{custom_po_check}" already exists. Please use a different number or leave it blank for auto-assign.')
         if errors:
             for e in errors: messages.error(request, e)
             return render(request, 'godown/add_po.html', ctx(request, {
@@ -899,6 +907,12 @@ def add_po(request):
         with transaction.atomic():
             custom_po = request.POST.get('po_number', '').strip()
             if custom_po:
+                # Check for duplicate PO number in this godown
+                if PurchaseOrder.all_objects.filter(godown=godown, po_number=custom_po).exists():
+                    messages.error(request, f'PO number "{custom_po}" already exists. Please use a different number.')
+                    return render(request, 'godown/add_po.html', ctx(request, {
+                        'active':'po','suppliers':suppliers_list,'products':products_list
+                    }))
                 po_number = custom_po
                 GodownSequence.next(godown, 'po')
             else:
@@ -980,6 +994,10 @@ def edit_po(request, pk):
         errors = []
         if not request.POST.get('supplier'): errors.append('Please select a supplier.')
         if not request.POST.get('date'):     errors.append('Please enter a date.')
+        _po_date_e      = request.POST.get('date', '')
+        _arrival_date_e = request.POST.get('expected_arrival', '')
+        if _po_date_e and _arrival_date_e and _arrival_date_e < _po_date_e:
+            errors.append('Expected Arrival Date cannot be earlier than the PO Date.')
 
         # Parse items — same two-per-item logic as _save_po_items
         all_qtys = request.POST.getlist('qty_sqm[]')
@@ -3665,7 +3683,8 @@ def bank_accounts(request):
 
 @login_req
 def add_bank_account(request):
-    godown = get_godown(request)
+    godown   = get_godown(request)
+    next_url = request.GET.get('next', '') or request.POST.get('next', '')
     if request.method == 'POST':
         errors = []
         name = request.POST.get('account_name','').strip()
@@ -3687,8 +3706,13 @@ def add_bank_account(request):
                 opening_balance=opening_balance,
             )
             messages.success(request, f'Bank account "{name}" added.')
+            # Return to wherever the user came from (payment page, expense form, etc.)
+            if next_url and next_url.startswith('/'):
+                return redirect(next_url)
             return redirect('bank_accounts')
-    return render(request, 'godown/add_bank_account.html', ctx(request, {'active':'bank'}))
+    return render(request, 'godown/add_bank_account.html', ctx(request, {
+        'active': 'bank', 'next_url': next_url,
+    }))
 
 
 @login_req
